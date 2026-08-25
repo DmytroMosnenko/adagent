@@ -1,0 +1,49 @@
+# Secrets — never commit these
+secrets/env
+secrets/*.json
+secrets/*.pem
+secrets/*.key
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.venv/
+venv/
+env/
+
+# Testing
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+*.log
+
+# Alembic (keep versions/ but not temp files)
+alembic/__pycache__/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# RPM build artifacts
+*.rpm
+~/rpmbuild/
+
+# Dependency directories
+.playwright
+prompts/*
+!prompts/*.example.txt
+
+# Storage directories
+report_storage

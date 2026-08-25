@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Analysis Result — AdAgent{% endblock %}
+
+{% block content %}
+<div class="container">
+
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap">
+    <h1 style="font-size:1.3rem;color:var(--navy);flex:1">Custom Analysis Result</h1>
+    <a href="/" class="btn btn-outline" style="padding:7px 16px;font-size:0.85rem">New search</a>
+  </div>
+
+  {% if report.is_limited and report.ads_found and report.ads_found > ads|length %}
+  <div class="upgrade-banner">
+    <p>🔒 <strong>{{ report.ads_found - ads|length }} more ads</strong> were found but not analyzed
+       (free tier: {{ settings.FREE_ADS_LIMIT }} ads).</p>
+    <a href="/subscribe">Unlock all ads →</a>
+  </div>
+  {% endif %}
+
+  {% if summary %}
+  <div class="card">
+    <p class="section-title">📊 Summary</p>
+    <div class="summary-box">{{ summary }}</div>
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <p class="section-title">📋 Per-ad analyses ({{ ads|length }})</p>
+    {% for ad in ads %}
+    <div class="analysis-block">
+      <div class="analysis-url">
+        <a href="{{ ad.url }}" target="_blank">{{ ad.url }}</a>
+      </div>
+      <div class="analysis-text">{{ ad.analysis }}</div>
+    </div>
+    {% else %}
+    <p style="color:var(--muted);font-size:0.9rem">No ad analyses available.</p>
+    {% endfor %}
+  </div>
+
+  <p style="text-align:center;margin-top:16px">
+    <a href="/" class="btn btn-primary">Start a new search</a>
+  </p>
+</div>
+{% endblock %}

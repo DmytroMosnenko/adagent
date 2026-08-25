@@ -1,0 +1,46 @@
+# ── AdAgent environment file ──────────────────────────────────────────────────
+# Installed to /opt/adagent/secrets/env  (chmod 600, owned by adagent:adagent)
+# Loaded by systemd via EnvironmentFile=
+
+APP_VERSION=0.1.0
+APP_BASE_URL=https://adagent.dimosense.com
+DEBUG=false
+
+# ── Database (MariaDB) ────────────────────────────────────────────────────────
+DB_USER=adagent
+DB_PASSWORD=CHANGE_ME
+DB_HOST=localhost:3306
+DB_NAME=adagent
+
+# ── Stripe ────────────────────────────────────────────────────────────────────
+STRIPE_SECRET_KEY=sk_live_CHANGE_ME
+STRIPE_WEBHOOK_SECRET=whsec_CHANGE_ME
+# JSON map of plan period → Stripe price_id
+# Add weekly/daily entries if you create those prices later:
+# '{"monthly":"price_xxx","weekly":"price_yyy","daily":"price_zzz"}'
+STRIPE_PRICES_JSON={"monthly": "price_CHANGE_ME"}
+STRIPE_SUCCESS_URL=https://adagent.dimosense.com/subscribe/success
+STRIPE_CANCEL_URL=https://adagent.dimosense.com/subscribe
+
+# ── AWS SES ───────────────────────────────────────────────────────────────────
+AWS_REGION=eu-west-1
+AWS_SES_FROM_EMAIL=noreply@dimosense.com
+AWS_ACCESS_KEY_ID=CHANGE_ME
+AWS_SECRET_ACCESS_KEY=CHANGE_ME
+
+# ── OpenAI ────────────────────────────────────────────────────────────────────
+OPENAI_API_KEY=sk-CHANGE_ME
+OPENAI_AD_MODEL=gpt-4o-mini
+OPENAI_SUMMARY_MODEL=gpt-4o-mini
+
+# ── Auth ──────────────────────────────────────────────────────────────────────
+SESSION_TTL_DAYS=7
+MAGIC_LINK_TTL_MINUTES=15
+SECRET_KEY=CHANGE_ME_RANDOM_64_CHARS
+
+# ── Freemium ──────────────────────────────────────────────────────────────────
+FREE_ADS_LIMIT=5
+
+# ── Storage ───────────────────────────────────────────────────────────────────
+REPORT_STORAGE_PATH=/opt/adagent/report_storage
+PLAYWRIGHT_BROWSERS_PATH=/opt/adagent/.playwright

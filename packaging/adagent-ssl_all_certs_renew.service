@@ -1,0 +1,11 @@
+[Unit]
+Description=AdAgent Certbot Renewal Service
+After=network.target
+StartLimitIntervalSec=10min
+StartLimitBurst=3
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/certbot renew --deploy-hook "systemctl reload nginx"
+StandardOutput=append:/var/log/adagent/ssl_certs_renew.log
+StandardError=append:/var/log/adagent/ssl_certs_renew.log

@@ -1,0 +1,9 @@
+[Unit]
+Description=Run AdAgent Certbot renew twice a day
+
+[Timer]
+OnCalendar=*-*-* 00,12:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

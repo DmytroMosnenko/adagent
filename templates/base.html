@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}AdAgent — AI-powered ad analysis{% endblock %}</title>
+<link rel="stylesheet" href="/static/style.css">
+{% block head %}{% endblock %}
+</head>
+<body>
+
+<nav class="site-nav">
+  <a href="/" class="nav-logo">Ad<span>Agent</span></a>
+  {% if user %}
+    <a href="/history" class="nav-link">My History</a>
+    <form action="/auth/logout" method="post" style="display:inline">
+      <button type="submit" class="nav-link" style="background:none;border:none;cursor:pointer">
+        Sign out
+      </button>
+    </form>
+    {% if not subscribed %}
+      <a href="/subscribe" class="nav-btn">Upgrade →</a>
+    {% endif %}
+  {% else %}
+    <a href="/auth" class="nav-link">Sign in</a>
+    <a href="/subscribe" class="nav-btn">Go Pro →</a>
+  {% endif %}
+</nav>
+
+{% block content %}{% endblock %}
+
+</body>
+</html>

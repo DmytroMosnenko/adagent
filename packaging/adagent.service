@@ -1,0 +1,24 @@
+[Unit]
+Description=AdAgent FastAPI service
+After=network.target mariadb.service
+Requires=mariadb.service
+
+[Service]
+Type=simple
+User=adagent
+Group=adagent
+WorkingDirectory=/opt/adagent
+EnvironmentFile=/opt/adagent/secrets/env
+Environment=PLAYWRIGHT_BROWSERS_PATH=/opt/adagent/.playwright
+ExecStart=/opt/adagent/venv/bin/uvicorn adagent_server:app \
+    --host 127.0.0.1 \
+    --port 8000 \
+    --workers 2 \
+    --log-level info
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/adagent/adagent.log
+StandardError=append:/var/log/adagent/adagent.log
+
+[Install]
+WantedBy=multi-user.target

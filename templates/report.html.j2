@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AdAgent Report — {{ generated_at }}</title>
+<style>
+:root {
+  --navy:#1e3a5f; --navy-lt:#2a4f80; --green:#16a34a; --green-bg:#dcfce7;
+  --amber:#d97706; --amber-bg:#fef3c7; --red:#dc2626; --red-bg:#fee2e2;
+  --blue:#2563eb; --blue-bg:#dbeafe; --gray:#64748b; --gray-bg:#f1f5f9;
+  --bg:#f0f4f8; --card:#ffffff; --border:#e2e8f0; --text:#1e293b;
+  --muted:#64748b; --shadow:0 2px 10px rgba(0,0,0,.07); --radius:12px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+     background:var(--bg);color:var(--text);line-height:1.55;font-size:15px}
+a{color:var(--blue)}
+
+/* AdAgent top bar */
+.aa-bar{background:var(--navy);color:#fff;padding:0 20px;display:flex;
+        align-items:center;gap:12px;height:46px;position:sticky;top:0;z-index:60;
+        box-shadow:0 2px 8px rgba(0,0,0,.25)}
+.aa-logo{font-weight:800;font-size:1rem;text-decoration:none;color:#fff;flex:1}
+.aa-logo span{color:#60a5fa}
+.aa-link{color:#cbd5e1;text-decoration:none;font-size:0.82rem;padding:4px 10px;
+         border-radius:5px;transition:background .15s}
+.aa-link:hover{background:rgba(255,255,255,.12);color:#fff}
+.aa-cta{background:var(--green);color:#fff!important;padding:5px 12px;
+        border-radius:5px;font-weight:700;font-size:0.8rem;text-decoration:none}
+
+/* Report header */
+.site-header{background:var(--navy);color:#fff;padding:16px 24px;display:flex;
+             align-items:center;gap:14px;flex-wrap:wrap}
+.site-header h1{font-size:1.05rem;font-weight:700;flex:1;white-space:nowrap}
+.meta-chip{font-size:0.75rem;color:#94a3b8;white-space:nowrap}
+.filter-btn{background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.25);
+            padding:6px 14px;border-radius:20px;text-decoration:none;font-size:0.8rem;
+            font-weight:600;white-space:nowrap;transition:background .2s}
+.filter-btn:hover{background:rgba(255,255,255,.22)}
+
+/* Upgrade banner */
+.freemium-banner{background:var(--amber-bg);border:1.5px solid var(--amber);border-radius:10px;
+                 padding:14px 18px;display:flex;align-items:center;gap:14px;
+                 margin:16px 24px;flex-wrap:wrap}
+.freemium-banner p{flex:1;font-size:0.88rem;color:#92400e;margin:0}
+.freemium-banner a{background:var(--amber);color:#fff;padding:7px 16px;border-radius:6px;
+                   font-weight:700;text-decoration:none;font-size:0.82rem;white-space:nowrap}
+
+.container{max-width:960px;margin:0 auto;padding:20px 16px 100px}
+.section-heading{font-size:0.7rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+                 color:var(--muted);margin-bottom:12px}
+.badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:0.72rem;
+       font-weight:700;white-space:nowrap}
+.badge.worth_viewing{background:var(--green-bg);color:var(--green)}
+.badge.maybe{background:var(--amber-bg);color:var(--amber)}
+.badge.skip{background:var(--red-bg);color:var(--red)}
+.badge.unknown{background:var(--gray-bg);color:var(--gray)}
+.badge.fair{background:var(--green-bg);color:var(--green)}
+.badge.high{background:var(--red-bg);color:var(--red)}
+.badge.low{background:var(--blue-bg);color:var(--blue)}
+
+/* Leaderboard */
+.leaderboard{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);
+             overflow:hidden;margin-bottom:20px}
+.lb-head{background:var(--navy);color:#fff;padding:12px 20px;font-weight:700;font-size:0.9rem}
+.lb-row{display:grid;grid-template-columns:42px minmax(0,1fr) 52px 100px 70px;
+        align-items:center;gap:10px;padding:11px 20px;
+        border-bottom:1px solid var(--border);transition:background .15s}
+.lb-row:last-child{border-bottom:none}
+.lb-row:hover{background:#f8fafc}
+.lb-rank{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;
+        justify-content:center;font-weight:800;font-size:0.82rem;flex-shrink:0;
+        background:var(--border);color:var(--navy)}
+.lb-rank.gold{background:linear-gradient(135deg,#FCD34D,#D97706);color:#7C2D12;
+              width:40px;height:40px;font-size:0.95rem;
+              box-shadow:0 2px 10px rgba(217,119,6,.35)}
+.lb-rank.silver{background:linear-gradient(135deg,#E5E7EB,#9CA3AF);color:#1F2937}
+.lb-rank.bronze{background:linear-gradient(135deg,#D97706,#78350F);color:#FEF3C7}
+.lb-info{min-width:0}
+.lb-title{font-weight:600;font-size:0.88rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lb-title-link{text-decoration:none;color:inherit;display:block}
+.lb-title-link:hover .lb-title{color:var(--blue);text-decoration:underline}
+.lb-sub{font-size:0.73rem;color:var(--muted);margin-top:2px;display:flex;align-items:center;gap:6px}
+.lb-score{display:flex;flex-direction:column;align-items:center;gap:3px}
+.lb-score-num{font-weight:800;font-size:1rem}
+.score-bar{width:34px;height:4px;background:var(--border);border-radius:2px;overflow:hidden}
+.score-fill{height:100%;border-radius:2px}
+.lb-price{font-weight:700;font-size:0.8rem;text-align:right;white-space:nowrap;color:var(--navy)}
+.lb-jump{display:flex;align-items:center;justify-content:center;padding:5px 10px;
+         background:var(--navy);color:#fff;border-radius:6px;text-decoration:none;
+         font-size:0.73rem;font-weight:600;transition:opacity .2s;white-space:nowrap}
+.lb-jump:hover{opacity:.78}
+
+/* Summary */
+.summary-card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);
+              padding:20px;margin-bottom:20px}
+.summary-stats{display:flex;gap:24px;flex-wrap:wrap;padding-top:12px;border-top:1px solid var(--border)}
+.stat-label{font-size:0.68rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.stat-value{font-size:0.93rem;font-weight:700;color:var(--navy);margin-top:2px}
+.recommendation{margin-top:12px;padding-top:12px;border-top:1px solid var(--border);
+                font-size:0.87rem;color:var(--muted);font-style:italic}
+
+/* Ad cards */
+.ads-section{display:flex;flex-direction:column;gap:14px}
+.ad-card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);
+         border-left:5px solid var(--border);overflow:hidden;
+         scroll-margin-top:58px}  /* offset for sticky AdAgent bar */
+.ad-card.worth_viewing{border-left-color:var(--green)}
+.ad-card.maybe{border-left-color:var(--amber)}
+.ad-card.skip{border-left-color:var(--red)}
+.ad-header{padding:15px 20px 0;display:flex;gap:12px;align-items:flex-start}
+.rank-circle{flex-shrink:0;width:30px;height:30px;border-radius:50%;background:var(--navy);
+             color:#fff;display:flex;align-items:center;justify-content:center;
+             font-size:0.8rem;font-weight:800;margin-top:2px}
+.rank-circle.gold{background:linear-gradient(135deg,#FCD34D,#D97706);color:#7C2D12;
+                  width:34px;height:34px;box-shadow:0 2px 8px rgba(217,119,6,.35)}
+.rank-circle.silver{background:linear-gradient(135deg,#E5E7EB,#9CA3AF);color:#1F2937}
+.rank-circle.bronze{background:linear-gradient(135deg,#D97706,#78350F);color:#FEF3C7}
+.ad-title-group{flex:1;min-width:0}
+.ad-title{font-size:0.97rem;font-weight:700;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.site-link{font-size:0.7rem;font-weight:600;color:var(--muted);background:var(--gray-bg);
+           border:1px solid var(--border);padding:2px 7px;border-radius:4px;
+           text-decoration:none;transition:background .15s}
+.site-link:hover{background:var(--border);color:var(--text)}
+.ad-meta{margin-top:5px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.ad-price{font-weight:700;font-size:0.93rem;color:var(--navy)}
+.ad-rating-text{font-size:0.75rem;color:var(--muted)}
+.ad-body{padding:10px 20px}
+.ad-verdict-note{font-size:0.83rem;font-style:italic;color:var(--muted);margin-bottom:6px}
+.ad-summary{font-size:0.88rem;color:var(--text)}
+.ad-specs{display:flex;flex-wrap:wrap;gap:14px;padding:10px 20px;
+          background:#fafbfc;border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+.spec{display:flex;flex-direction:column}
+.spec-label{font-size:0.63rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.spec-value{font-size:0.83rem;font-weight:600;margin-top:1px}
+.ad-tags{padding:10px 20px;display:flex;flex-wrap:wrap;gap:6px}
+.tag{padding:3px 9px;border-radius:12px;font-size:0.73rem;font-weight:500}
+.tag.pos{background:var(--green-bg);color:var(--green)}
+.tag.neg{background:var(--red-bg);color:var(--red)}
+details.raw{border-top:1px solid var(--border)}
+details.raw>summary{padding:10px 20px;font-size:0.77rem;color:var(--muted);cursor:pointer;
+                    list-style:none;user-select:none;display:flex;align-items:center;gap:6px}
+details.raw>summary::-webkit-details-marker{display:none}
+details.raw>summary::before{content:'▶';font-size:0.6rem;transition:transform .2s;display:inline-block}
+details.raw[open]>summary::before{transform:rotate(90deg)}
+details.raw>summary:hover{color:var(--text);background:#fafbfc}
+.raw-body{padding:4px 20px 16px;border-top:1px solid var(--border)}
+.raw-section{margin-top:12px}
+.raw-section-label{font-size:0.63rem;text-transform:uppercase;letter-spacing:.06em;
+                   color:var(--muted);margin-bottom:4px}
+.raw-section p,.raw-section pre{font-size:0.8rem;color:var(--text);white-space:pre-wrap;word-break:break-word}
+
+#float-btn{position:fixed;bottom:22px;right:18px;background:var(--navy);color:#fff;
+           border:none;border-radius:22px;padding:8px 16px 8px 12px;font-size:0.8rem;
+           font-weight:700;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.2);
+           display:none;align-items:center;gap:6px;z-index:200;transition:opacity .2s,transform .2s}
+#float-btn:hover{opacity:.88;transform:translateY(-2px)}
+
+@media(max-width:620px){
+  .lb-row{grid-template-columns:34px minmax(0,1fr) 42px}
+  .lb-score,.lb-price{display:none}
+}
+</style>
+</head>
+<body>
+
+<!-- AdAgent top bar -->
+<div class="aa-bar">
+  <a href="{{ adagent_url }}" class="aa-logo">Ad<span>Agent</span></a>
+  <a href="{{ adagent_url }}" class="aa-link">New search</a>
+  <a href="{{ adagent_url }}/history" class="aa-link">History</a>
+  {% if is_limited and ads_found > ads|length %}
+  <a href="{{ adagent_url }}{{ subscribe_url }}" class="aa-cta">Upgrade →</a>
+  {% endif %}
+</div>
+
+<!-- Report header -->
+<header class="site-header">
+  <h1>🔍 AdAgent Report</h1>
+  <span class="meta-chip">{{ total_ads }} ads · {{ generated_at }}</span>
+  <a href="{{ filter_url }}" target="_blank" class="filter-btn">View {{ filter_site }} filter ↗</a>
+</header>
+
+<!-- Freemium banner -->
+{% if is_limited and ads_found > ads|length %}
+<div class="freemium-banner">
+  <p>🔒 <strong>{{ ads_found - ads|length }} more ads</strong> were found but not analyzed
+     (free plan: {{ ads|length }} ads shown).
+     Upgrade to AdAgent Pro to unlock all {{ ads_found }} results.</p>
+  <a href="{{ adagent_url }}{{ subscribe_url }}">Upgrade — $9.99/month →</a>
+</div>
+{% endif %}
+
+<div class="container">
+
+<!-- Leaderboard -->
+<section id="leaderboard">
+  <p class="section-heading">🏆 Leaderboard — ranked by AI rating</p>
+  <div class="leaderboard">
+    <div class="lb-head">Top Picks</div>
+    {% for ad in ads %}
+    <div class="lb-row" id="lb-{{ loop.index0 }}">
+      <div class="lb-rank {% if loop.index==1 %}gold{% elif loop.index==2 %}silver{% elif loop.index==3 %}bronze{% endif %}">
+        #{{ loop.index }}
+      </div>
+      <div class="lb-info">
+        <a href="{{ ad.url }}" target="_blank" class="lb-title-link">
+          <div class="lb-title">{{ ad.title }}</div>
+        </a><div class="lb-sub">
+          <span class="badge {{ ad.verdict }}">{{ ad.verdict_label }}</span>
+          {% if ad.price_assessment != 'unknown' %}
+          <span class="badge {{ ad.price_assessment }}">{{ ad.price_assessment_label }}</span>
+          {% endif %}
+        </div>
+      </div>
+      <div class="lb-score">
+        <span class="lb-score-num">{{ ad.rating }}</span>
+        <div class="score-bar">
+          <div class="score-fill" style="width:{{ ad.rating_pct }}%;background:{{ ad.rating_color }}"></div>
+        </div>
+      </div>
+      <div class="lb-price">{{ ad.asking_price }}</div>
+      <a href="#ad-{{ loop.index0 }}" class="lb-jump" data-lb-id="lb-{{ loop.index0 }}">Details ↓</a>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+<!-- Market summary -->
+{% if market_summary %}
+<section id="summary">
+  <p class="section-heading">📊 Market Overview</p>
+  <div class="summary-card">
+    <p>{{ market_summary }}</p>
+    <div class="summary-stats">
+      {% if price_range %}<div><div class="stat-label">Price range</div><div class="stat-value">{{ price_range }}</div></div>{% endif %}
+      {% if average_price %}<div><div class="stat-label">Avg. price</div><div class="stat-value">{{ average_price }}</div></div>{% endif %}
+      {% if average_price_m2 %}<div><div class="stat-label">Avg. per m²</div><div class="stat-value">{{ average_price_m2 }}</div></div>{% endif %}
+      <div><div class="stat-label">Ads analyzed</div><div class="stat-value">{{ total_ads }}</div></div>
+    </div>
+    {% if recommendation %}<p class="recommendation">{{ recommendation }}</p>{% endif %}
+  </div>
+</section>
+{% endif %}
+
+<!-- Ad detail cards -->
+<section id="ads">
+  <p class="section-heading">📋 Ad Details</p>
+  <div class="ads-section">
+  {% for ad in ads %}
+  <div class="ad-card {{ ad.verdict }}" id="ad-{{ loop.index0 }}">
+    <div class="ad-header">
+      <div class="rank-circle {% if loop.index==1 %}gold{% elif loop.index==2 %}silver{% elif loop.index==3 %}bronze{% endif %}">{{ loop.index }}</div>
+      <div class="ad-title-group">
+        <div class="ad-title">
+          {{ ad.title }}
+          <span class="badge {{ ad.verdict }}">{{ ad.verdict_label }}</span>
+          <a href="{{ ad.url }}" target="_blank" class="site-link">{{ ad.site_label }} ↗</a>
+        </div>
+        <div class="ad-meta">
+          {% if ad.asking_price %}<span class="ad-price">{{ ad.asking_price }}</span>{% endif %}
+          {% if ad.price_per_m2 %}<span class="ad-rating-text">{{ ad.price_per_m2 }}/m²</span>{% endif %}
+          {% if ad.price_assessment != 'unknown' %}<span class="badge {{ ad.price_assessment }}">{{ ad.price_assessment_label }}</span>{% endif %}
+          <span class="ad-rating-text">⭐ {{ ad.rating }}/10</span>
+        </div>
+      </div>
+    </div>
+    <div class="ad-body">
+      {% if ad.verdict_note %}<p class="ad-verdict-note">{{ ad.verdict_note }}</p>{% endif %}
+      {% if ad.summary %}<p class="ad-summary">{{ ad.summary }}</p>{% endif %}
+    </div>
+    {% if ad.spec_items %}
+    <div class="ad-specs">
+      {% for item in ad.spec_items %}
+      <div class="spec">
+        <span class="spec-label">{{ item.label }}</span>
+        <span class="spec-value">{{ item.value }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% if ad.positives or ad.red_flags %}
+    <div class="ad-tags">
+      {% for p in ad.positives %}<span class="tag pos">✓ {{ p }}</span>{% endfor %}
+      {% for f in ad.red_flags %}<span class="tag neg">⚠ {{ f }}</span>{% endfor %}
+    </div>
+    {% endif %}
+    <details class="raw">
+      <summary>Raw scraped data</summary>
+      <div class="raw-body">
+        {% if ad.raw.location %}<div class="raw-section"><div class="raw-section-label">Location</div><p>{{ ad.raw.location }}</p></div>{% endif %}
+        {% if ad.raw.parameters %}<div class="raw-section"><div class="raw-section-label">Parameters</div><pre>{{ ad.raw.parameters }}</pre></div>{% endif %}
+        {% if ad.raw.description %}<div class="raw-section"><div class="raw-section-label">Description</div><p>{{ ad.raw.description }}</p></div>{% endif %}
+        {% if ad.raw.error %}<div class="raw-section"><div class="raw-section-label">Error</div><p style="color:var(--red)">{{ ad.raw.error }}</p></div>{% endif %}
+      </div>
+    </details>
+  </div>
+  {% endfor %}
+  </div>
+</section>
+
+</div><!-- /.container -->
+
+<button id="float-btn" aria-label="Navigate back">
+  <span>↑</span><span id="float-label">Top</span>
+</button>
+
+<script>
+(function(){
+  const btn=document.getElementById('float-btn');
+  const lbl=document.getElementById('float-label');
+  let lastLbId=null;
+  document.querySelectorAll('.lb-jump').forEach(function(a){
+    a.addEventListener('click',function(){lastLbId=a.getAttribute('data-lb-id');lbl.textContent='Leaderboard';});
+  });
+  btn.addEventListener('click',function(){
+    if(lastLbId){
+      var t=document.getElementById(lastLbId);
+      if(t)t.scrollIntoView({behavior:'smooth',block:'start'});
+      lastLbId=null;lbl.textContent='Top';
+    } else {
+      document.getElementById('leaderboard').scrollIntoView({behavior:'smooth'});
+    }
+  });
+  window.addEventListener('scroll',function(){
+    btn.style.display=window.scrollY>350?'flex':'none';
+  },{passive:true});
+})();
+</script>
+</body>
+</html>

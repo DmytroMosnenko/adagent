@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Subscribed! — AdAgent{% endblock %}
+{% block content %}
+<div class="container" style="max-width:520px;text-align:center;padding-top:60px">
+  <div class="card">
+    <div style="font-size:3rem;margin-bottom:16px">🎉</div>
+    <h1 style="color:var(--navy);margin-bottom:12px">You're now on AdAgent Pro!</h1>
+    <p style="color:var(--muted);margin-bottom:24px">
+      We've sent a sign-in link to your email address.<br>
+      Click it to access your account and start analyzing all ads.
+    </p>
+    {% if user %}
+    <a href="/" class="btn btn-green btn-full">Start analyzing →</a>
+    {% else %}
+    <p style="font-size:0.85rem;color:var(--muted)">
+      Check your inbox for the sign-in link.<br>
+      <a href="/auth">Request another sign-in link</a>
+    </p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

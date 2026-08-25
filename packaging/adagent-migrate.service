@@ -1,0 +1,14 @@
+[Unit]
+Description=AdAgent Alembic database migration
+After=network.target mariadb.service
+Requires=mariadb.service
+
+[Service]
+Type=oneshot
+User=adagent
+Group=adagent
+WorkingDirectory=/opt/adagent
+EnvironmentFile=/opt/adagent/secrets/env
+ExecStart=/opt/adagent/venv/bin/alembic upgrade head
+StandardOutput=append:/var/log/adagent/migrate.log
+StandardError=append:/var/log/adagent/migrate.log

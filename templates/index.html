@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}AdAgent — Analyze OLX ads with AI{% endblock %}
+
+{% block content %}
+<div class="hero">
+  <h1>Find the best deal,<br><span>powered by AI</span></h1>
+  <p>Paste any OLX search link. AdAgent reads every ad, scores it 1–10,
+     flags red flags, and gives you a ranked leaderboard in minutes.</p>
+</div>
+
+<div class="container" style="max-width:680px">
+
+  {% if error %}
+  <div class="alert alert-error">{{ error }}</div>
+  {% endif %}
+
+  <div class="card">
+    <form action="/analyze" method="post">
+
+      <!-- OLX URL -->
+      <div class="form-group">
+        <label class="form-label" for="filter_url">OLX / Otomoto / Otodom filter URL</label>
+        <input class="form-input" type="url" id="filter_url" name="filter_url" required
+               placeholder="https://www.olx.pl/motoryzacja/samochody/q-mini/">
+        <p class="form-hint">Go to OLX, apply your filters, copy the URL from the browser bar.</p>
+      </div>
+
+      <!-- Preset selector -->
+      <div class="form-group">
+        <label class="form-label">Analysis preset</label>
+        <div class="preset-grid">
+          {% for key, meta in presets.items() %}
+          <label class="preset-card">
+            <input type="radio" name="prompt_preset" value="{{ key }}"
+                   {% if loop.first %}checked{% endif %}>
+            <span class="preset-card-label">{{ meta.label }}</span>
+            <span class="preset-card-desc">{{ meta.description }}</span>
+          </label>
+          {% endfor %}
+          <label class="preset-card">
+            <input type="radio" name="prompt_preset" value="">
+            <span class="preset-card-label">✏️ Custom prompts</span>
+            <span class="preset-card-desc">Write your own analysis instructions</span>
+          </label>
+        </div>
+
+        <!-- Custom prompt fields (shown via JS) -->
+        <div id="custom-fields" style="display:none" class="preset-custom">
+          <div class="form-group">
+            <label class="form-label" for="custom_ad_prompt">Per-ad analysis prompt</label>
+            <textarea class="form-textarea" id="custom_ad_prompt" name="custom_ad_prompt"
+                      placeholder="You are an expert buyer. Analyze this ad and return a short verdict…"></textarea>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="custom_summary_prompt">Summary prompt</label>
+            <textarea class="form-textarea" id="custom_summary_prompt" name="custom_summary_prompt"
+                      placeholder="Based on the analyses above, summarize the market and recommend the best options…"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- Freemium note -->
+      {% if not subscribed %}
+      <div class="alert alert-info" style="margin-bottom:18px">
+        🎁 <strong>Free tier:</strong> first {{ settings.FREE_ADS_LIMIT }} ads analyzed.
+        <a href="/subscribe" style="font-weight:700">Upgrade to Pro</a> to unlock all ads.
+      </div>
+      {% else %}
+      <div class="alert alert-success" style="margin-bottom:18px">
+        ✅ <strong>AdAgent Pro</strong> — all ads will be analyzed.
+      </div>
+      {% endif %}
+
+      <button type="submit" class="btn btn-primary btn-full">Analyze →</button>
+    </form>
+  </div>
+
+  <!-- Feature comparison -->
+  {% if not subscribed %}
+  <div class="card" style="margin-top:8px">
+    <p class="section-title">What you get with AdAgent Pro</p>
+    <div class="pricing-grid">
+      <div class="pricing-card">
+        <div class="pricing-label">Free</div>
+        <div class="pricing-price">$0</div>
+        <ul class="pricing-features">
+          <li>First {{ settings.FREE_ADS_LIMIT }} ads per search</li>
+          <li>Leaderboard &amp; AI scores</li>
+          <li class="no">Full search results</li>
+          <li class="no">Report history</li>
+        </ul>
+        <span style="color:var(--muted);font-size:0.85rem">You're on the free plan</span>
+      </div>
+      <div class="pricing-card featured">
+        <div class="pricing-label">Pro</div>
+        <div class="pricing-price">$9.99 <span>/month</span></div>
+        <ul class="pricing-features">
+          <li>All ads analyzed</li>
+          <li>Leaderboard &amp; AI scores</li>
+          <li>Full search results</li>
+          <li>Report history</li>
+        </ul>
+        <a href="/subscribe" class="btn btn-green btn-full">Upgrade now →</a>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+
+<script>
+  const radios = document.querySelectorAll('input[name="prompt_preset"]');
+  const custom = document.getElementById('custom-fields');
+  function toggle() {
+    const val = document.querySelector('input[name="prompt_preset"]:checked')?.value;
+    custom.style.display = val === '' ? 'block' : 'none';
+  }
+  radios.forEach(r => r.addEventListener('change', toggle));
+  toggle();
+
+  // Make the whole preset-card label clickable
+  document.querySelectorAll('.preset-card').forEach(card => {
+    card.addEventListener('click', () => {
+      card.querySelector('input[type=radio]').checked = true;
+      toggle();
+    });
+  });
+</script>
+{% endblock %}

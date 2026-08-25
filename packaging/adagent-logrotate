@@ -1,0 +1,11 @@
+/var/log/adagent/*.log {
+    daily
+    rotate 45
+    missingok
+    notifempty
+    copytruncate
+    compress
+    delaycompress
+    dateext
+    dateformat -%Y-%m-%d
+}

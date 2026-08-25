@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Sign in — AdAgent{% endblock %}
+{% block content %}
+<div class="container" style="max-width:440px;padding-top:60px">
+  <div class="card">
+    <h1 style="font-size:1.3rem;color:var(--navy);margin-bottom:8px">Sign in to AdAgent</h1>
+    <p style="color:var(--muted);font-size:0.9rem;margin-bottom:24px">
+      Enter your email and we'll send you a sign-in link.
+      No password needed.
+    </p>
+
+    {% if sent %}
+    <div class="alert alert-success">
+      ✅ Sign-in link sent to <strong>{{ sent }}</strong>.<br>
+      Check your inbox (and spam folder).
+    </div>
+    {% else %}
+    <form action="/auth" method="post">
+      <div class="form-group">
+        <label class="form-label" for="email">Email address</label>
+        <input class="form-input" type="email" name="email" id="email"
+               required placeholder="you@example.com" autofocus>
+      </div>
+      <button type="submit" class="btn btn-primary btn-full">Send sign-in link →</button>
+    </form>
+    {% endif %}
+
+    <p style="text-align:center;margin-top:20px;font-size:0.82rem;color:var(--muted)">
+      Don't have an account? Just enter your email — one will be created automatically.
+    </p>
+  </div>
+</div>
+{% endblock %}

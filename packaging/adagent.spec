@@ -23,8 +23,8 @@ install -d %{buildroot}/opt/adagent
 cp -r %{_sourcedir}/service       %{buildroot}/opt/adagent/service
 cp -r %{_sourcedir}/templates     %{buildroot}/opt/adagent/templates
 cp -r %{_sourcedir}/static        %{buildroot}/opt/adagent/static
-cp -r %{_sourcedir}/prompts       %{buildroot}/opt/adagent/prompts
-cp -r %{_sourcedir}/alembic       %{buildroot}/opt/adagent/alembic
+cp -r %{_sourcedir}/prompts.example     %{buildroot}/opt/adagent/prompts.example
+cp -r %{_sourcedir}/alembic             %{buildroot}/opt/adagent/alembic
 cp    %{_sourcedir}/adagent_server.py   %{buildroot}/opt/adagent/
 cp    %{_sourcedir}/alembic.ini         %{buildroot}/opt/adagent/
 cp    %{_sourcedir}/requirements.txt    %{buildroot}/opt/adagent/

@@ -14,20 +14,12 @@ unlimited with Pro subscription.
 %prep
 # nothing to unpack — we build in-place from SOURCES
 
-# ── Build ─────────────────────────────────────────────────────────────────────
-%build
-# Create venv and install Python deps
-python3.12 -m venv %{_sourcedir}/venv
-%{_sourcedir}/venv/bin/pip install --upgrade pip --quiet
-%{_sourcedir}/venv/bin/pip install -r %{_sourcedir}/requirements.txt --quiet
-
 # ── Install ───────────────────────────────────────────────────────────────────
 %install
 rm -rf %{buildroot}
 
 # Application files → /opt/adagent
 install -d %{buildroot}/opt/adagent
-cp -r %{_sourcedir}/venv          %{buildroot}/opt/adagent/venv
 cp -r %{_sourcedir}/service       %{buildroot}/opt/adagent/service
 cp -r %{_sourcedir}/templates     %{buildroot}/opt/adagent/templates
 cp -r %{_sourcedir}/static        %{buildroot}/opt/adagent/static
@@ -93,6 +85,11 @@ fi
 
 # ── Post-install ──────────────────────────────────────────────────────────────
 %post
+# Create venv and install Python deps
+python3.12 -m venv /opt/adagent/venv
+/opt/adagent/venv/bin/pip install --upgrade pip --quiet
+/opt/adagent/venv/bin/pip install -r /opt/adagent/requirements.txt --quiet
+
 # Install Playwright browsers into a fixed path accessible to the service user
 export PLAYWRIGHT_BROWSERS_PATH=/opt/adagent/.playwright
 /opt/adagent/venv/bin/playwright install-deps chromium 2>&1 || true

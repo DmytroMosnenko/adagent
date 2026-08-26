@@ -11,7 +11,21 @@ jobs:
     permissions:
       contents: write
 
+    container:
+      # Build inside Almalinux for best RPM compatibility with Hetzner
+      image: almalinux:10
+
     steps:
+      - name: Install RPM build tools
+        run: |
+          dnf -y update
+          dnf install -y epel-release
+          dnf config-manager --set-enabled crb
+          dnf makecache
+          dnf -y install \
+            rpm-build rpmdevtools systemd-rpm-macros rpmlint \
+            tar gzip findutils sed git python3 rsync
+
       - name: Checkout source
         uses: actions/checkout@v4
 
@@ -19,11 +33,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
-      - name: Install RPM build tools
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y rpm rpmlint
 
       - name: Extract version from tag
         id: version

@@ -4,7 +4,7 @@ Release:    1%{?dist}
 Summary:    AdAgent — AI-powered OLX ad analysis SaaS
 License:    Proprietary
 BuildArch:  x86_64
-Requires:   nginx, python3-certbot-nginx, at-spi2-core, cups-libs, libXcomposite, libXdamage, libXext, libXfixes, libXrandr, libdrm, mesa-libgbm, libxkbcommon, alsa-lib, nss, libxshmfence, pango, xorg-x11-server-Xvfb
+Requires:   nginx, python3-certbot-nginx, atk, at-spi2-atk, at-spi2-core, cups-libs, libXcomposite, libXdamage, libXext, libXfixes, libXrandr, libdrm, mesa-libgbm, libxkbcommon, alsa-lib, nss, libxshmfence, pango, xorg-x11-server-Xvfb
 
 %description
 AdAgent analyzes OLX, Otomoto, and Otodom search results using AI,

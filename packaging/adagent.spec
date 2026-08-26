@@ -31,7 +31,7 @@ cp    %{_sourcedir}/requirements.txt    %{buildroot}/opt/adagent/
 
 # Secrets skeleton (real values filled in post-install)
 install -d %{buildroot}/opt/adagent/secrets
-install -m 600 %{_sourcedir}/packaging/env %{buildroot}/opt/adagent/secrets/env
+install -m 600 %{_sourcedir}/packaging/env.example %{buildroot}/opt/adagent/secrets/env.example
 
 # Report storage directory placeholder
 install -d %{buildroot}/opt/adagent/report_storage
@@ -65,7 +65,7 @@ install -m 644 %{_sourcedir}/packaging/adagent-logrotate \
 %defattr(-,adagent,adagent,-)
 /opt/adagent/
 %attr(700,adagent,adagent) /opt/adagent/secrets
-%attr(600,adagent,adagent) /opt/adagent/secrets/env
+%attr(600,adagent,adagent) /opt/adagent/secrets/env.example
 /var/log/adagent/
 
 %defattr(-,root,root,-)
@@ -106,7 +106,7 @@ fi
 # Fix permissions
 chown -R adagent:adagent /opt/adagent /var/log/adagent
 chmod 700 /opt/adagent/secrets
-chmod 600 /opt/adagent/secrets/env
+chmod 600 /opt/adagent/secrets/env.example
 
 # Issue TLS certificate if not already present
 if [ ! -f /etc/letsencrypt/live/adagent.dimosense.com/fullchain.pem ]; then

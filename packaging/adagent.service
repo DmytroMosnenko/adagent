@@ -12,7 +12,7 @@ EnvironmentFile=/opt/adagent/secrets/env
 Environment=PLAYWRIGHT_BROWSERS_PATH=/opt/adagent/.playwright
 ExecStart=/opt/adagent/venv/bin/uvicorn adagent_server:app \
     --host 127.0.0.1 \
-    --port 8000 \
+    --port 8001 \
     --workers 2 \
     --log-level info
 Restart=always

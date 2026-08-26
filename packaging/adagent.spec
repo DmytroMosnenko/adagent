@@ -93,9 +93,15 @@ python3.12 -m venv /opt/adagent/venv
 
 # Install Playwright browsers into a fixed path accessible to the service user
 export PLAYWRIGHT_BROWSERS_PATH=/opt/adagent/.playwright
-/opt/adagent/venv/bin/playwright install-deps chromium 2>&1 || true
-/opt/adagent/venv/bin/playwright install chromium 2>&1 || true
-chown -R adagent:adagent /opt/adagent/.playwright 2>/dev/null || true
+if ! compgen -G "$PLAYWRIGHT_BROWSERS_PATH/chromium-*" > /dev/null; then
+    echo "Installing Playwright browsers for user adagent..."
+    if ! runuser -u adagent -- /opt/adagent/venv/bin/python -m playwright install; then
+        echo "❌ Playwright install failed" >&2
+        exit 1
+    fi
+else
+    echo "Playwright browsers already installed, skipping."
+fi
 
 # Fix permissions
 chown -R adagent:adagent /opt/adagent /var/log/adagent

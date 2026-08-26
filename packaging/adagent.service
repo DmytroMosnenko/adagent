@@ -1,7 +1,7 @@
 [Unit]
 Description=AdAgent FastAPI service
-After=network.target mariadb.service
-Requires=mariadb.service
+After=network.target mariadb.service adagent-migrate.service
+Requires=mariadb.service adagent-migrate.service
 
 [Service]
 Type=simple
@@ -10,6 +10,8 @@ Group=adagent
 WorkingDirectory=/opt/adagent
 EnvironmentFile=/opt/adagent/secrets/env
 Environment=PLAYWRIGHT_BROWSERS_PATH=/opt/adagent/.playwright
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONFAULTHANDLER=1
 ExecStart=/opt/adagent/venv/bin/uvicorn adagent_server:app \
     --host 127.0.0.1 \
     --port 8001 \

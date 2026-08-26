@@ -2,6 +2,7 @@
 Description=AdAgent Alembic database migration
 After=network.target mariadb.service
 Requires=mariadb.service
+ConditionPathExists=/opt/adagent/alembic/versions
 
 [Service]
 Type=oneshot

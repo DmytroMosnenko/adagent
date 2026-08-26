@@ -116,9 +116,6 @@ if [ ! -f /etc/letsencrypt/live/adagent.dimosense.com/fullchain.pem ]; then
         -m amidtrader@gmail.com 2>&1 || true
 fi
 
-# Run DB migration as the service user
-systemctl start adagent-migrate.service 2>&1 || true
-
 # Reload nginx, enable & restart service
 systemctl reload nginx 2>&1 || true
 systemctl daemon-reload

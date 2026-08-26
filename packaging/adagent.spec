@@ -25,8 +25,9 @@ cp -r %{_sourcedir}/templates     %{buildroot}/opt/adagent/templates
 cp -r %{_sourcedir}/static        %{buildroot}/opt/adagent/static
 cp -r %{_sourcedir}/prompts       %{buildroot}/opt/adagent/prompts
 cp -r %{_sourcedir}/alembic       %{buildroot}/opt/adagent/alembic
-cp    %{_sourcedir}/adagent_server.py %{buildroot}/opt/adagent/
-cp    %{_sourcedir}/alembic.ini   %{buildroot}/opt/adagent/
+cp    %{_sourcedir}/adagent_server.py   %{buildroot}/opt/adagent/
+cp    %{_sourcedir}/alembic.ini         %{buildroot}/opt/adagent/
+cp    %{_sourcedir}/requirements.txt    %{buildroot}/opt/adagent/
 
 # Secrets skeleton (real values filled in post-install)
 install -d %{buildroot}/opt/adagent/secrets

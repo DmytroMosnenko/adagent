@@ -502,3 +502,62 @@ class TestUUIDv7:
             await engine.dispose()
 
         asyncio.run(_run())
+
+
+class TestShortReason:
+
+    def test_returns_first_six_words(self):
+        from service.report_builder import _short_reason
+        note = "Low mileage full service history one owner garage kept excellent"
+        result = _short_reason(note)
+        assert result == "Low mileage full service history one…"
+
+    def test_short_note_not_truncated(self):
+        from service.report_builder import _short_reason
+        note = "Good car"
+        assert _short_reason(note) == "Good car"
+
+    def test_empty_returns_empty(self):
+        from service.report_builder import _short_reason
+        assert _short_reason("") == ""
+
+    def test_short_reason_in_prepare_ad(self):
+        import json
+        result = {
+            "url": "https://www.olx.pl/d/oferta/test-ID1.html",
+            "data": {"url": "...", "title": "Mini Cooper 2019"},
+            "analysis": json.dumps({
+                "rating": 8, "verdict": "worth_viewing",
+                "verdict_note": "One owner full service history no accidents",
+                "summary": "Good car.", "specs": {},
+                "asking_price": "50 000 zł", "price_assessment": "fair",
+                "red_flags": [], "positives": [],
+            }),
+        }
+        ad = _prepare_ad(result)
+        assert "short_reason" in ad
+        assert "One owner full service" in ad["short_reason"]
+        assert len(ad["short_reason"].split()) <= 7   # 6 words + optional ellipsis word
+
+    def test_short_reason_in_rendered_html(self):
+        """short_reason appears in leaderboard section of rendered report."""
+        import json
+        results = [{
+            "url": "https://www.otomoto.pl/oferta/mini-ID1.html",
+            "data": {"url": "...", "title": "Mini Paceman 2018", "price": "45 000 zł"},
+            "analysis": json.dumps({
+                "rating": 9, "verdict": "worth_viewing",
+                "verdict_note": "Pristine condition one owner full history",
+                "summary": "Excellent.", "specs": {"make": "Mini"},
+                "asking_price": "45 000 zł", "price_assessment": "fair",
+                "red_flags": [], "positives": [],
+            }),
+        }]
+        html = build_html_report(
+            results=results,
+            summary_text='{"market_summary":"ok","price_range":"","average_price":"","recommendation":""}',
+            filter_url="https://www.olx.pl/test/",
+            report_id="abc", ads_found=1, is_limited=False,
+        )
+        assert "Pristine condition one owner" in html
+        assert "lb-reason" in html

@@ -79,6 +79,16 @@ def _fallback_summary() -> dict:
 
 
 
+
+def _short_reason(verdict_note: str) -> str:
+    """First 6 words of verdict_note for the leaderboard micro-description."""
+    words = verdict_note.split()
+    if not words:
+        return ""
+    snippet = " ".join(words[:6])
+    return snippet + ("…" if len(words) > 6 else "")
+
+
 def _parse_raw_parameters(params_text: str) -> list[dict]:
     """Parse OLX/Otomoto parameter strings 'Label: Value\n...' into spec items."""
     items = []
@@ -147,6 +157,7 @@ def _prepare_ad(result: dict) -> dict:
         "verdict":                verdict,
         "verdict_label":          _VERDICT_LABELS.get(verdict, verdict),
         "verdict_note":           p.get("verdict_note") or "",
+        "short_reason":           _short_reason(p.get("verdict_note") or ""),
         "summary":                p.get("summary") or "",
         "spec_items":             spec_items,
         "asking_price":           p.get("asking_price") or raw.get("price") or "",

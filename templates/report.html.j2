@@ -82,6 +82,7 @@ a{color:var(--blue)}
 .lb-title{font-weight:600;font-size:0.88rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .lb-title-link{text-decoration:none;color:inherit;display:block}
 .lb-title-link:hover .lb-title{color:var(--blue);text-decoration:underline}
+.lb-reason{font-size:0.7rem;color:var(--muted);font-style:italic;margin-top:2px;margin-bottom:1px}
 .lb-sub{font-size:0.73rem;color:var(--muted);margin-top:2px;display:flex;align-items:center;gap:6px}
 .lb-score{display:flex;flex-direction:column;align-items:center;gap:3px}
 .lb-score-num{font-weight:800;font-size:1rem}
@@ -208,7 +209,7 @@ details.raw>summary:hover{color:var(--text);background:#fafbfc}
       <div class="lb-info">
         <a href="{{ ad.url }}" target="_blank" class="lb-title-link">
           <div class="lb-title">{{ ad.title }}</div>
-        </a><div class="lb-sub">
+        </a>{% if ad.short_reason %}<div class="lb-reason">{{ ad.short_reason }}</div>{% endif %}<div class="lb-sub">
           <span class="badge {{ ad.verdict }}">{{ ad.verdict_label }}</span>
           {% if ad.price_assessment != 'unknown' %}
           <span class="badge {{ ad.price_assessment }}">{{ ad.price_assessment_label }}</span>

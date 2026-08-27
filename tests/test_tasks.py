@@ -269,3 +269,49 @@ async def test_task_updates_progress_during_analysis(db, patch_task_db, tmp_path
     report = await crud.get_report(db, report_id)
     assert report.ads_analyzed == 3          # final count persisted correctly
     assert report.status == "done"
+
+
+class TestScraperIntegration:
+    """Tests for scraper helpers that don't require a real browser."""
+
+    def test_next_page_by_url_increments_page_param(self):
+        from service.scraper import _next_page_by_url
+        url = "https://www.otomoto.pl/osobowe/mini?page=1&order=created_at%3Adesc"
+        result = _next_page_by_url(url)
+        assert "page=2" in result
+
+    def test_next_page_by_url_starts_from_one(self):
+        from service.scraper import _next_page_by_url
+        url = "https://www.otomoto.pl/osobowe/mini"
+        result = _next_page_by_url(url)
+        assert "page=2" in result
+
+    def test_next_page_by_url_increments_higher_pages(self):
+        from service.scraper import _next_page_by_url
+        url = "https://www.otodom.pl/pl/wyniki/sprzedaz/?page=5"
+        result = _next_page_by_url(url)
+        assert "page=6" in result
+
+    def test_is_ad_accepts_olx(self):
+        from service.scraper import _is_ad
+        assert _is_ad("https://www.olx.pl/d/oferta/mini-paceman-ID123.html")
+
+    def test_is_ad_accepts_otomoto(self):
+        from service.scraper import _is_ad
+        assert _is_ad("https://www.otomoto.pl/oferta/mini-cooper-ID456.html")
+
+    def test_is_ad_accepts_otodom(self):
+        from service.scraper import _is_ad
+        assert _is_ad("https://www.otodom.pl/oferta/mieszkanie-ID789.html")
+
+    def test_is_ad_rejects_navigation_links(self):
+        from service.scraper import _is_ad
+        assert not _is_ad("https://www.olx.pl/motoryzacja/samochody/")
+        assert not _is_ad("https://www.olx.pl/")
+        assert not _is_ad("https://www.otomoto.pl/osobowe/mini")
+
+    def test_site_detection(self):
+        from service.scraper import _site
+        assert _site("https://www.otomoto.pl/oferta/x") == "otomoto"
+        assert _site("https://www.otodom.pl/oferta/x")  == "otodom"
+        assert _site("https://www.olx.pl/d/oferta/x")   == "olx"

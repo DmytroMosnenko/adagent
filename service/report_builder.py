@@ -81,12 +81,13 @@ def _fallback_summary() -> dict:
 
 
 def _short_reason(verdict_note: str) -> str:
-    """First 6 words of verdict_note for the leaderboard micro-description."""
-    words = verdict_note.split()
-    if not words:
-        return ""
-    snippet = " ".join(words[:6])
-    return snippet + ("…" if len(words) > 6 else "")
+    """
+    Return the full verdict_note for the leaderboard micro-description.
+    Truncation (with '…') was removed — the template now uses CSS
+    text-overflow:ellipsis for display and a tooltip (title attribute)
+    to reveal the full text on hover.
+    """
+    return verdict_note.strip()
 
 
 def _parse_raw_parameters(params_text: str) -> list[dict]:

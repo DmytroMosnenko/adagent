@@ -60,11 +60,45 @@ def parse_json_safe(text: str, fallback: dict) -> dict:
 
 
 def _format_ad(data: dict) -> str:
-    order = ("title", "price", "location", "parameters", "description", "raw_text", "error")
+    """
+    Format scraped ad data for the AI prompt.
+
+    Priority order:
+      1. Structured fields (title, price, location, parameters, description)
+         — extracted by CSS selectors, most reliable.
+      2. page_text — full visible page text, captures everything the CSS
+         selectors may have missed (e.g. Mileage on Otomoto, language-specific
+         field labels).  Provided as a fallback section so the AI can fill gaps.
+      3. raw_text / error — legacy fallback or error marker.
+
+    Otomoto ads in particular may have rich data that wasn't picked up by
+    structured selectors; page_text lets the AI find it regardless of DOM layout
+    or language used on the site.
+    """
+    structured_keys = ("title", "price", "location", "parameters", "description")
     lines = [f"URL: {data.get('url', '')}"]
-    for key in order:
+
+    for key in structured_keys:
         if data.get(key):
             lines.append(f"\n{key.capitalize()}:\n{data[key]}")
+
+    # Include full page text when structured extraction was partial or missing.
+    # "Partial" = we got fewer than 3 structured fields; always include for
+    # otomoto/otodom where CSS coverage is less reliable.
+    structured_found = sum(1 for k in structured_keys if data.get(k))
+    url = data.get("url", "")
+    is_non_olx = "otomoto.pl" in url or "otodom.pl" in url
+    page_text = data.get("page_text", "")
+
+    if page_text and (structured_found < 3 or is_non_olx):
+        lines.append(f"\nFull page text (use to extract any fields missing above):\n{page_text[:8_000]}")
+
+    if data.get("raw_text") and not page_text:
+        lines.append(f"\nRaw text:\n{data['raw_text']}")
+
+    if data.get("error"):
+        lines.append(f"\nError:\n{data['error']}")
+
     return "\n".join(lines)
 
 

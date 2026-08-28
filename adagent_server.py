@@ -23,7 +23,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from service.config import settings
 from service.db import async_session, get_db
-from service.logger import get_logger
+from service.logger import get_logger, setup_root_logging
+
+# Apply unified log formatting before any third-party loggers are configured
+setup_root_logging()
 from service import crud, auth, email_client, stripe_client
 from service.tasks import run_analysis
 

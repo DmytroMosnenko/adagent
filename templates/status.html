@@ -8,6 +8,7 @@
       <div class="spinner"></div>
       <h2 style="margin-top:20px;color:var(--navy)">Analyzing your search…</h2>
       <p class="progress-text" id="status-msg">Starting up…</p>
+      <p class="progress-text" id="progress-detail" style="font-size:0.78rem;color:var(--muted);margin-top:4px"></p>
       <div class="progress-bar-wrap">
         <div class="progress-bar-fill" id="progress-bar" style="width:0%"></div>
       </div>
@@ -51,16 +52,25 @@ async function poll() {
         msg = "Collecting ad links from all pages…";
         pct = 10;
       } else if (analyzed === 0) {
-        msg = `Found ${found} ads. Extracting content…`;
+        msg = `Found ${found} ads. Scraping content (0 / ${found})…`;
         pct = 20;
       } else {
         const total = IS_LIMITED ? Math.min(found, {{ settings.FREE_ADS_LIMIT }}) : found;
-        msg = `Analyzing ad ${analyzed} of ${total}…`;
+        msg = `Analyzing ad ${analyzed} of ${total} (scraped: ${found})…`;
         pct = 20 + Math.round((analyzed / Math.max(total, 1)) * 70);
       }
     }
 
     document.getElementById("status-msg").textContent = msg;
+    const detail = document.getElementById("progress-detail");
+    if (detail) {
+      if (found > 0) {
+        const total = IS_LIMITED ? Math.min(found, {{ settings.FREE_ADS_LIMIT }}) : found;
+        detail.textContent = `Ads found: ${found} · Scraped & analyzed: ${analyzed} / ${total}`;
+      } else {
+        detail.textContent = "";
+      }
+    }
     document.getElementById("progress-bar").style.width = pct + "%";
 
     if (status === "done" || status === "failed") {

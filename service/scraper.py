@@ -76,6 +76,25 @@ _CONSENT_SELECTORS = (
     'button:has-text("Akceptuj")',
 )
 
+# Selectors that identify ad cards that failed to load or are "Skip" ads
+_AD_FAILED_SELECTORS = (
+    # "Ad failed to load" labels
+    '[data-cy="ad-failed-to-load"]',
+    '.ad-failed',
+    'div:has-text("Ad failed to load")',
+    '[class*="failedToLoad"]',
+    '[class*="failed-to-load"]',
+)
+
+_AD_SKIP_SELECTORS = (
+    # "Skip" / sponsored skip labels
+    '[data-cy="ad-skip"]',
+    'button:has-text("Skip")',
+    'div:has-text("Skip")',
+    '[class*="skipAd"]',
+    '[class*="skip-ad"]',
+)
+
 # Per-site content field selectors (multiple candidates, first match wins)
 _FIELDS: dict[str, dict[str, tuple]] = {
     "olx": {
@@ -195,6 +214,36 @@ async def _dismiss_consent(page) -> None:
             continue
 
 
+async def _check_ad_load_issues(page, url: str) -> None:
+    """
+    Detect 'Ad failed to load' and 'Skip' labels on an ad page and log
+    a Warning for each found.  Never raises — purely informational.
+    """
+    for sel in _AD_FAILED_SELECTORS:
+        try:
+            el = page.locator(sel).first
+            if await el.is_visible(timeout=800):
+                logger.warning(
+                    "[scraper] 'Ad failed to load' label detected on %s (selector: %s)",
+                    url, sel,
+                )
+                return   # one warning per page is enough
+        except Exception:
+            continue
+
+    for sel in _AD_SKIP_SELECTORS:
+        try:
+            el = page.locator(sel).first
+            if await el.is_visible(timeout=800):
+                logger.warning(
+                    "[scraper] 'Skip' label detected on %s (selector: %s)",
+                    url, sel,
+                )
+                return
+        except Exception:
+            continue
+
+
 async def _wait_for_content(page, site: str) -> None:
     """
     Wait for JS-rendered content to appear.
@@ -266,6 +315,18 @@ async def _extract_params(page, site: str) -> list[str]:
     return params
 
 
+async def _get_full_page_text(page) -> str:
+    """
+    Return the full visible text of the ad page for use as AI input.
+    Captures everything including structured param tables that may not
+    be individually addressable by CSS selectors.
+    """
+    try:
+        return (await page.inner_text("main, body"))[:12_000]
+    except Exception:
+        return ""
+
+
 # ── Public API ─────────────────────────────────────────────────────────────────
 
 async def collect_all_links(filter_url: str) -> list[str]:
@@ -283,6 +344,9 @@ async def collect_all_links(filter_url: str) -> list[str]:
     os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", settings.PLAYWRIGHT_BROWSERS_PATH)
     logger.info("[scraper] starting link collection: %s", filter_url)
 
+    # Collect links as a set to deduplicate promoted ads that appear on
+    # multiple filter pages, then preserve insertion order via a list.
+    seen: set[str] = set()
     links: list[str] = []
 
     async with async_playwright() as pw:
@@ -303,15 +367,6 @@ async def collect_all_links(filter_url: str) -> list[str]:
                 logger.debug("[scraper] listing page HTTP %d", status)
                 if status == 403:
                     logger.warning("[scraper] 403 on listing page — stopping pagination")
-                    logger.warning(
-                        "[scraper] 403 headers=%s",
-                        dict(resp.headers) if resp else None,
-                    )
-
-                    if resp:
-                        body = await resp.text()
-                        logger.warning("[scraper] 403 body=%s", body[:5000])
-
                     break
             except Exception as exc:
                 logger.error("[scraper] listing page load failed: %s", exc)
@@ -329,7 +384,8 @@ async def collect_all_links(filter_url: str) -> list[str]:
                     for el in await page.query_selector_all(sel):
                         raw  = await el.get_attribute("href") or ""
                         full = _clean(_absolute(raw, base))
-                        if full and _is_ad(full) and full not in links:
+                        if full and _is_ad(full) and full not in seen:
+                            seen.add(full)
                             links.append(full)
                 except Exception:
                     continue
@@ -345,7 +401,7 @@ async def collect_all_links(filter_url: str) -> list[str]:
             # ── Find next page ──────────────────────────────────────────────
             nxt: Optional[str] = None
 
-            # 1. Try button selectors
+            # 1. Try button selectors (OLX uses buttons with hrefs)
             for sel in _NEXT_PAGE_SELECTORS:
                 try:
                     el = page.locator(sel).first
@@ -363,7 +419,10 @@ async def collect_all_links(filter_url: str) -> list[str]:
                 except Exception:
                     continue
 
-            # 2. URL-based fallback (Otomoto, Otodom use ?page=N)
+            # 2. URL-based fallback — Otomoto and Otodom use ?page=N.
+            #    OLX uses button-only pagination; if buttons yielded nothing
+            #    for OLX that means we're truly done, so we restrict the
+            #    URL-increment fallback to otomoto/otodom only.
             if not nxt:
                 site = _site(current)
                 if site in ("otomoto", "otodom"):
@@ -447,6 +506,9 @@ async def _extract_one(url: str, ctx, PWTimeout) -> dict:
             await _dismiss_consent(page)
             await _wait_for_content(page, site)
 
+            # ── Check for ad-load / skip issues ─────────────────────────────
+            await _check_ad_load_issues(page, url)
+
             # ── Extract structured fields ────────────────────────────────────
             data: dict = {"url": url}
             fields = _FIELDS.get(site, _FIELDS["olx"])
@@ -475,13 +537,17 @@ async def _extract_one(url: str, ctx, PWTimeout) -> dict:
             else:
                 logger.debug("[scraper] no parameters found on %s", url)
 
-            # ── Fallback: raw body text ──────────────────────────────────────
+            # ── Full page text for AI (universal, language-agnostic) ─────────
+            # Otomoto in particular has rich structured data in the page but
+            # CSS selectors may miss fields (e.g. Mileage) due to DOM layout
+            # differences.  Providing the full page text lets the AI extract
+            # whatever is actually present, regardless of language or layout.
+            data["page_text"] = await _get_full_page_text(page)
+
+            # ── Fallback: raw body text (kept for backwards compatibility) ───
             if len(data) <= 2:
                 logger.debug("[scraper] using raw body fallback for %s", url)
-                try:
-                    data["raw_text"] = (await page.inner_text("main, body"))[:5_000]
-                except Exception:
-                    pass
+                data["raw_text"] = data.get("page_text", "")[:5_000]
 
             logger.info("[scraper] extracted %d fields from %s", len(data), url)
             return data

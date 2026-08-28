@@ -303,6 +303,15 @@ async def collect_all_links(filter_url: str) -> list[str]:
                 logger.debug("[scraper] listing page HTTP %d", status)
                 if status == 403:
                     logger.warning("[scraper] 403 on listing page — stopping pagination")
+                    logger.warning(
+                        "[scraper] 403 headers=%s",
+                        dict(resp.headers) if resp else None,
+                    )
+
+                    if resp:
+                        body = await resp.text()
+                        logger.warning("[scraper] 403 body=%s", body[:5000])
+
                     break
             except Exception as exc:
                 logger.error("[scraper] listing page load failed: %s", exc)

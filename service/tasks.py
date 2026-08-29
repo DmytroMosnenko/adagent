@@ -32,8 +32,7 @@ async def run_analysis(report_id: str) -> None:
     Main background task.  Steps:
       1. Collect all ad links
       2. Store total count; apply freemium limit
-      3. Extract ad content
-      4. AI analysis per ad (update progress after each)
+      3+4. Extract + AI-analyze each ad in one loop (progress updated per ad)
       5. AI summary
       6. Build HTML report (preset) or store JSON (custom)
       7. Mark report done
@@ -60,12 +59,9 @@ async def run_analysis(report_id: str) -> None:
 
         # ── 2. Apply freemium limit ────────────────────────────────────────────
         links = all_links[:settings.FREE_ADS_LIMIT] if report.is_limited else all_links
+        total = len(links)
 
-        # ── 3. Extract content ─────────────────────────────────────────────────
-        logger.info("[task] %s extracting %d ads", report_id, len(links))
-        ad_data_list = await scraper.extract_ads(links)
-
-        # ── 4. AI analysis per ad ──────────────────────────────────────────────
+        # ── Load prompts ───────────────────────────────────────────────────────
         if report.prompt_preset:
             ad_prompt_path, summary_prompt_path = _prompt_paths(report.prompt_preset)
             ad_prompt      = _load_prompt(ad_prompt_path)
@@ -74,26 +70,54 @@ async def run_analysis(report_id: str) -> None:
             ad_prompt      = report.custom_ad_prompt or ""
             summary_prompt = report.custom_summary_prompt or ""
 
+        # ── 3+4. Extract content + AI-analyze each ad in one loop ─────────────
+        # Merging the two phases means ads_analyzed increments as soon as each
+        # ad is both scraped AND analyzed, giving a live counter on the status
+        # page.  Previously extract_ads() ran to completion before any DB update
+        # so the counter stayed at 0 during the entire scraping phase.
+        logger.info("[task] %s extracting and analyzing %d ads", report_id, total)
         results: list[dict] = []
-        for i, item in enumerate(ad_data_list):
-            logger.debug("[task] %s analyzing ad %d/%d", report_id, i + 1, len(ad_data_list))
-            try:
-                analysis = await ai_client.analyze_ad(item["data"], ad_prompt)
-            except Exception as exc:
-                analysis = f"AI ERROR: {exc}"
-                logger.warning("[task] ad analysis failed: %s", exc)
 
-            results.append({
-                "url":      item["url"],
-                "data":     item["data"],
-                "analysis": analysis,
-            })
+        # We need a single shared browser context across all ads (same as the
+        # original extract_ads() did) to avoid re-launching Playwright per ad.
+        import os, random
+        from playwright.async_api import async_playwright, TimeoutError as PWTimeout
 
-            # Update progress after each ad
-            async with async_session() as db:
-                await crud.update_report(db, report_id, ads_analyzed=i + 1)
+        os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", settings.PLAYWRIGHT_BROWSERS_PATH)
 
-            await asyncio.sleep(0.1)  # slight yield to event loop
+        async with async_playwright() as pw:
+            browser = await pw.chromium.launch(**scraper._launch_opts())
+            ctx     = await browser.new_context(**scraper._ctx_opts())
+
+            for i, url in enumerate(links):
+                logger.info("[task] %s scraping ad %d/%d: %s", report_id, i + 1, total, url)
+
+                # -- Extract --
+                data = await scraper._extract_one(url, ctx, PWTimeout)
+
+                # -- Analyze --
+                logger.debug("[task] %s analyzing ad %d/%d", report_id, i + 1, total)
+                try:
+                    analysis = await ai_client.analyze_ad(data, ad_prompt)
+                except Exception as exc:
+                    analysis = f"AI ERROR: {exc}"
+                    logger.warning("[task] ad analysis failed: %s", exc)
+
+                results.append({
+                    "url":      url,
+                    "data":     data,
+                    "analysis": analysis,
+                })
+
+                # Update progress counter (scraped + analyzed = one unit)
+                async with async_session() as db:
+                    await crud.update_report(db, report_id, ads_analyzed=i + 1)
+
+                # Throttle between ads (keep original inter-ad delay)
+                jitter = random.uniform(0.3, 1.0)
+                await asyncio.sleep(scraper._AD_BETWEEN_DELAY + jitter)
+
+            await browser.close()
 
         # ── 5. AI summary ──────────────────────────────────────────────────────
         logger.info("[task] %s generating summary", report_id)

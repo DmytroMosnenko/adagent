@@ -51,13 +51,15 @@ async function poll() {
       if (found === 0) {
         msg = "Collecting ad links from all pages…";
         pct = 10;
-      } else if (analyzed === 0) {
-        msg = `Found ${found} ads. Scraping content (0 / ${found})…`;
-        pct = 20;
       } else {
         const total = IS_LIMITED ? Math.min(found, {{ settings.FREE_ADS_LIMIT }}) : found;
-        msg = `Analyzing ad ${analyzed} of ${total} (scraped: ${found})…`;
-        pct = 20 + Math.round((analyzed / Math.max(total, 1)) * 70);
+        if (analyzed === 0) {
+          msg = `Found ${found} ads. Starting analysis…`;
+          pct = 20;
+        } else {
+          msg = `Scraping & analyzing ad ${analyzed} of ${total}…`;
+          pct = 20 + Math.round((analyzed / Math.max(total, 1)) * 70);
+        }
       }
     }
 
@@ -66,7 +68,7 @@ async function poll() {
     if (detail) {
       if (found > 0) {
         const total = IS_LIMITED ? Math.min(found, {{ settings.FREE_ADS_LIMIT }}) : found;
-        detail.textContent = `Ads found: ${found} · Scraped & analyzed: ${analyzed} / ${total}`;
+        detail.textContent = `Ads found: ${found} · Processed: ${analyzed} / ${total}`;
       } else {
         detail.textContent = "";
       }

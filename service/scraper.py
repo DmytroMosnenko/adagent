@@ -193,11 +193,54 @@ def _next_page_by_url(url: str) -> str:
 
 
 def _ctx_opts() -> dict:
+    """
+    Browser context options.  Extra headers and settings reduce the likelihood
+    of CloudFront / bot-detection blocks — particularly important on datacenter
+    IPs (Hetzner, AWS, etc.) where OLX's CloudFront distribution is aggressive.
+    """
     return {
         "user_agent": _UA,
         "viewport":   {"width": 1280, "height": 900},
         "locale":     "pl-PL",
+        "extra_http_headers": {
+            "Accept-Language": "pl-PL,pl;q=0.9,en-US;q=0.8,en;q=0.7",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Sec-Ch-Ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+            "Sec-Ch-Ua-Mobile": "?0",
+            "Sec-Ch-Ua-Platform": '"Windows"',
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1",
+            "Upgrade-Insecure-Requests": "1",
+        },
     }
+
+
+def _launch_opts() -> dict:
+    """
+    Browser launch options.  On headless server deployments, add args that
+    suppress automation signals visible to CloudFront / bot detectors.
+    If SCRAPER_PROXY is set in config, route all traffic through it —
+    essential when the server IP is a known datacenter range (Hetzner, etc.).
+    """
+    args = [
+        "--disable-blink-features=AutomationControlled",
+        "--no-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+        "--window-size=1280,900",
+    ]
+    opts: dict = {"headless": settings.PLAYWRIGHT_HEADLESS, "args": args}
+    if settings.SCRAPER_PROXY_ADDRESS:
+        opts["proxy"] = {
+            "server": settings.SCRAPER_PROXY_ADDRESS,
+            "username": settings.SCRAPER_PROXY_USERNAME,
+            "password": settings.SCRAPER_PROXY_PASSWORD,
+        }
+        logger.info("[scraper] using proxy: %s", settings.SCRAPER_PROXY_ADDRESS.split("@")[-1])
+    return opts
 
 
 # ── Shared page helpers ────────────────────────────────────────────────────────
@@ -350,8 +393,9 @@ async def collect_all_links(filter_url: str) -> list[str]:
     links: list[str] = []
 
     async with async_playwright() as pw:
-        browser = await pw.chromium.launch(headless=settings.PLAYWRIGHT_HEADLESS)
-        ctx     = await browser.new_context(**_ctx_opts())
+        browser = await pw.chromium.launch(**_launch_opts())
+        ctx     = await browser.new_context(**_ctx_opts(),
+                                            ignore_https_errors=settings.SCRAPER_PROXY_IGNORE_HTTPS_ERRORS)
         page    = await ctx.new_page()
         current = filter_url
         page_n  = 0
@@ -366,7 +410,15 @@ async def collect_all_links(filter_url: str) -> list[str]:
                 status = resp.status if resp else 0
                 logger.debug("[scraper] listing page HTTP %d", status)
                 if status == 403:
-                    logger.warning("[scraper] 403 on listing page — stopping pagination")
+                    logger.warning(
+                        "[scraper] 403 headers=%s",
+                        dict(resp.headers) if resp else None,
+                    )
+
+                    if resp:
+                        body = await resp.text()
+                        logger.warning("[scraper] 403 body=%s", body[:5000])
+
                     break
             except Exception as exc:
                 logger.error("[scraper] listing page load failed: %s", exc)
@@ -456,8 +508,9 @@ async def extract_ads(links: list[str]) -> list[dict]:
     results: list[dict] = []
 
     async with async_playwright() as pw:
-        browser = await pw.chromium.launch(headless=settings.PLAYWRIGHT_HEADLESS)
-        ctx     = await browser.new_context(**_ctx_opts())
+        browser = await pw.chromium.launch(**_launch_opts())
+        ctx     = await browser.new_context(**_ctx_opts(),
+                                            ignore_https_errors=settings.SCRAPER_PROXY_IGNORE_HTTPS_ERRORS)
 
         for i, url in enumerate(links):
             logger.info("[scraper] extracting ad %d/%d: %s", i + 1, len(links), url)

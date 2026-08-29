@@ -173,6 +173,10 @@ def _prepare_ad(result: dict) -> dict:
             "location":    raw.get("location", ""),
             "parameters":  raw.get("parameters", ""),
             "description": raw.get("description", ""),
+            # page_text is the full visible text captured from the page.
+            # Shown in the raw section when CSS selectors missed the description
+            # (common on Otomoto / Otodom whose DOM layout varies by language).
+            "page_text":   raw.get("page_text", "")[:3_000],
             "error":       raw.get("error", ""),
         },
     }

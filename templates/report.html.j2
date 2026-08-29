@@ -294,6 +294,7 @@ details.raw>summary:hover{color:var(--text);background:#fafbfc}
         {% if ad.raw.location %}<div class="raw-section"><div class="raw-section-label">Location</div><p>{{ ad.raw.location }}</p></div>{% endif %}
         {% if ad.raw.parameters %}<div class="raw-section"><div class="raw-section-label">Parameters</div><pre>{{ ad.raw.parameters }}</pre></div>{% endif %}
         {% if ad.raw.description %}<div class="raw-section"><div class="raw-section-label">Description</div><p>{{ ad.raw.description }}</p></div>{% endif %}
+        {% if not ad.raw.description and ad.raw.page_text %}<div class="raw-section"><div class="raw-section-label">Page text (CSS extraction missed description)</div><pre>{{ ad.raw.page_text }}</pre></div>{% endif %}
         {% if ad.raw.error %}<div class="raw-section"><div class="raw-section-label">Error</div><p style="color:var(--red)">{{ ad.raw.error }}</p></div>{% endif %}
       </div>
     </details>

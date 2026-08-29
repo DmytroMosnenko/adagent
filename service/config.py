@@ -63,6 +63,16 @@ class Settings(BaseSettings):
     PLAYWRIGHT_HEADLESS: bool = True
     PLAYWRIGHT_BROWSERS_PATH: str = "/opt/adagent/.playwright"
 
+    # ── HTTP Proxy (optional) ───────────────────────────────────────────────────
+    # OLX / Otomoto use CloudFront which blocks datacenter IPs (Hetzner, AWS…).
+    # Set a residential or ISP proxy to route scraper traffic through a clean IP.
+    # Format: "http://user:pass@host:port"  or leave empty to use direct connection.
+    # Example providers: BrightData, Oxylabs, Smartproxy, ScraperApi (residential pool).
+    SCRAPER_PROXY_ADDRESS: str = ""
+    SCRAPER_PROXY_USERNAME: str = ""
+    SCRAPER_PROXY_PASSWORD: str = ""
+    SCRAPER_PROXY_IGNORE_HTTPS_ERRORS: bool = True
+
     @property
     def db_url_async(self) -> str:
         return (

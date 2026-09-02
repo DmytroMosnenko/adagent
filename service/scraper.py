@@ -218,12 +218,67 @@ def _ctx_opts() -> dict:
     }
 
 
+def _proxy_cfg() -> dict | None:
+    """
+    Build Playwright proxy config from BrightData residential credentials.
+    Credentials are passed as separate fields (not embedded in the URL) so that
+    Playwright's Chromium handles the proxy-auth challenge correctly — embedding
+    user:pass in the server URL string is unreliable with Chromium.
+
+    Returns None when SCRAPER_PROXY_ADDRESS is not configured (direct connection).
+    """
+    if not settings.SCRAPER_PROXY_ADDRESS:
+        return None
+    cfg = {
+        "server":   settings.SCRAPER_PROXY_ADDRESS,
+        "username": settings.SCRAPER_PROXY_USERNAME,
+        "password": settings.SCRAPER_PROXY_PASSWORD,
+    }
+    logger.info(
+        "[scraper] proxy configured: %s (user: %s)",
+        settings.SCRAPER_PROXY_ADDRESS,
+        settings.SCRAPER_PROXY_USERNAME,
+    )
+    return cfg
+
+
+# Resource types that add bandwidth/latency but are never read by the
+# extraction logic (all fields are read via .inner_text(), not images).
+# Deliberately does NOT include:
+#   - "stylesheet": layout/visibility (is_visible() checks) depend on CSS
+#   - "script":     Otomoto/Otodom are React SPAs, content never renders without JS
+#   - "xhr"/"fetch": some sites lazy-load description/parameters via XHR
+# Deliberately does NOT block ad-network domains, even though they're often
+# large: doing so would make _check_ad_load_issues() report false positives
+# (an ad we blocked ourselves looks identical to an ad that failed to load).
+_BLOCKED_RESOURCE_TYPES = frozenset({"image", "media", "font"})
+
+
+async def _block_unneeded_requests(route) -> None:
+    """
+    Abort requests for resource types we never use (images/video/fonts).
+    On classifieds sites, photos are typically the large majority of page
+    weight — blocking them cuts proxy bandwidth substantially and removes
+    the serial round-trip wait for each one, which matters most when every
+    request is going through a slow residential exit node.
+    """
+    if route.request.resource_type in _BLOCKED_RESOURCE_TYPES:
+        await route.abort()
+    else:
+        await route.continue_()
+
+
+async def _install_request_blocking(ctx) -> None:
+    """Apply _block_unneeded_requests to every page opened in this context."""
+    await ctx.route("**/*", _block_unneeded_requests)
+
+
 def _launch_opts() -> dict:
     """
     Browser launch options.  On headless server deployments, add args that
     suppress automation signals visible to CloudFront / bot detectors.
-    If SCRAPER_PROXY is set in config, route all traffic through it —
-    essential when the server IP is a known datacenter range (Hetzner, etc.).
+    Proxy (if configured) is injected at launch level so it applies to all
+    contexts and pages — including the initial navigation that CloudFront sees.
     """
     args = [
         "--disable-blink-features=AutomationControlled",
@@ -233,13 +288,9 @@ def _launch_opts() -> dict:
         "--window-size=1280,900",
     ]
     opts: dict = {"headless": settings.PLAYWRIGHT_HEADLESS, "args": args}
-    if settings.SCRAPER_PROXY_ADDRESS:
-        opts["proxy"] = {
-            "server": settings.SCRAPER_PROXY_ADDRESS,
-            "username": settings.SCRAPER_PROXY_USERNAME,
-            "password": settings.SCRAPER_PROXY_PASSWORD,
-        }
-        logger.info("[scraper] using proxy: %s", settings.SCRAPER_PROXY_ADDRESS.split("@")[-1])
+    proxy = _proxy_cfg()
+    if proxy:
+        opts["proxy"] = proxy
     return opts
 
 
@@ -396,6 +447,7 @@ async def collect_all_links(filter_url: str) -> list[str]:
         browser = await pw.chromium.launch(**_launch_opts())
         ctx     = await browser.new_context(**_ctx_opts(),
                                             ignore_https_errors=settings.SCRAPER_PROXY_IGNORE_HTTPS_ERRORS)
+        await _install_request_blocking(ctx)
         page    = await ctx.new_page()
         current = filter_url
         page_n  = 0
@@ -511,6 +563,7 @@ async def extract_ads(links: list[str]) -> list[dict]:
         browser = await pw.chromium.launch(**_launch_opts())
         ctx     = await browser.new_context(**_ctx_opts(),
                                             ignore_https_errors=settings.SCRAPER_PROXY_IGNORE_HTTPS_ERRORS)
+        await _install_request_blocking(ctx)
 
         for i, url in enumerate(links):
             logger.info("[scraper] extracting ad %d/%d: %s", i + 1, len(links), url)

@@ -88,6 +88,7 @@ async def run_analysis(report_id: str) -> None:
         async with async_playwright() as pw:
             browser = await pw.chromium.launch(**scraper._launch_opts())
             ctx     = await browser.new_context(**scraper._ctx_opts())
+            await scraper._install_request_blocking(ctx)
 
             for i, url in enumerate(links):
                 logger.info("[task] %s scraping ad %d/%d: %s", report_id, i + 1, total, url)

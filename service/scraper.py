@@ -215,6 +215,7 @@ def _ctx_opts() -> dict:
             "Sec-Fetch-User": "?1",
             "Upgrade-Insecure-Requests": "1",
         },
+        "ignore_https_errors": settings.SCRAPER_PROXY_IGNORE_HTTPS_ERRORS,
     }
 
 
@@ -445,8 +446,7 @@ async def collect_all_links(filter_url: str) -> list[str]:
 
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(**_launch_opts())
-        ctx     = await browser.new_context(**_ctx_opts(),
-                                            ignore_https_errors=settings.SCRAPER_PROXY_IGNORE_HTTPS_ERRORS)
+        ctx     = await browser.new_context(**_ctx_opts())
         await _install_request_blocking(ctx)
         page    = await ctx.new_page()
         current = filter_url
@@ -457,8 +457,8 @@ async def collect_all_links(filter_url: str) -> list[str]:
             logger.info("[scraper] listing page %d: %s", page_n, current)
 
             try:
-                resp = await page.goto(current, wait_until="domcontentloaded",
-                                       timeout=30_000)
+                resp=await page.goto(current, wait_until="networkidle",
+                                       timeout=90_000)
                 status = resp.status if resp else 0
                 logger.debug("[scraper] listing page HTTP %d", status)
                 if status == 403:
@@ -476,7 +476,6 @@ async def collect_all_links(filter_url: str) -> list[str]:
                 logger.error("[scraper] listing page load failed: %s", exc)
                 break
 
-            await asyncio.sleep(_PAGE_LOAD_DELAY)
             await _dismiss_consent(page)
 
             # Collect links from ALL selectors (no early break — catches
@@ -561,8 +560,7 @@ async def extract_ads(links: list[str]) -> list[dict]:
 
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(**_launch_opts())
-        ctx     = await browser.new_context(**_ctx_opts(),
-                                            ignore_https_errors=settings.SCRAPER_PROXY_IGNORE_HTTPS_ERRORS)
+        ctx     = await browser.new_context(**_ctx_opts())
         await _install_request_blocking(ctx)
 
         for i, url in enumerate(links):
@@ -591,7 +589,7 @@ async def _extract_one(url: str, ctx, PWTimeout) -> dict:
         page = None
         try:
             page = await ctx.new_page()
-            resp = await page.goto(url, wait_until="domcontentloaded", timeout=30_000)
+            resp = await page.goto(url, wait_until="networkidle", timeout=90_000)
             status = resp.status if resp else 0
             logger.debug("[scraper] ad page HTTP %d (attempt %d): %s", status, attempt + 1, url)
 
@@ -608,7 +606,6 @@ async def _extract_one(url: str, ctx, PWTimeout) -> dict:
                 return {"url": url, "error": "HTTP 403 — rate limited (retries exhausted)"}
 
             # ── Wait for JS-rendered content ────────────────────────────────
-            await asyncio.sleep(_AD_LOAD_DELAY)
             await _dismiss_consent(page)
             await _wait_for_content(page, site)
 

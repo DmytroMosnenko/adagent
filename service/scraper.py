@@ -528,15 +528,15 @@ async def collect_all_links(filter_url: str) -> list[str]:
                                        timeout=90_000)
                 status = resp.status if resp else 0
                 logger.debug("[scraper] listing page HTTP %d", status)
-                if status == 403:
+                if not (200 <= status < 300):
                     logger.warning(
-                        "[scraper] 403 headers=%s",
+                        "[scraper] %d headers=%s", status,
                         dict(resp.headers) if resp else None,
                     )
 
                     if resp:
                         body = await resp.text()
-                        logger.warning("[scraper] 403 body=%s", body[:5000])
+                        logger.warning("[scraper] %d body=%s", status, body[:5000])
 
                     break
             except Exception as exc:

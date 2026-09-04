@@ -192,6 +192,72 @@ def _next_page_by_url(url: str) -> str:
     return urlunparse(parsed._replace(query=new_query))
 
 
+async def _next_page_by_number(page, current_page: int, base: str, current: str) -> Optional[str]:
+    """
+    Find the next numbered OLX pagination link.
+
+    OLX's current markup does not reliably expose a pagination-specific
+    data-cy/data-testid attribute. The reliable part is the href itself:
+    pagination links contain a `page=N` query parameter.
+
+    We inspect links with a page query parameter and choose the smallest
+    page number greater than the current page. This also preserves all
+    search/filter query parameters because we use OLX's own href.
+    """
+    candidates: list[tuple[int, str]] = []
+
+    try:
+        for el in await page.query_selector_all('a[href*="page="]'):
+            try:
+                href = await el.get_attribute("href") or ""
+                if not href:
+                    continue
+
+                candidate = _absolute(href, base)
+                if not candidate:
+                    continue
+
+                if candidate.rstrip("/") == current.rstrip("/"):
+                    continue
+
+                parsed = urlparse(candidate)
+                params = parse_qs(parsed.query, keep_blank_values=True)
+                page_values = params.get("page")
+                if not page_values:
+                    continue
+
+                try:
+                    page_num = int(page_values[0])
+                except (TypeError, ValueError):
+                    continue
+
+                if page_num <= current_page:
+                    continue
+
+                candidates.append((page_num, candidate))
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+    if candidates:
+        # Deduplicate URLs and choose the immediate next page.
+        unique: dict[str, tuple[int, str]] = {
+            url: (num, url) for num, url in candidates
+        }
+        candidates = list(unique.values())
+        candidates.sort(key=lambda item: item[0])
+
+        page_num, candidate = candidates[0]
+        logger.debug(
+            "[scraper] next page via numbered pagination: page %d -> %d: %s",
+            current_page, page_num, candidate,
+        )
+        return candidate
+
+    return None
+
+
 def _ctx_opts() -> dict:
     """
     Browser context options.  Extra headers and settings reduce the likelihood
@@ -431,8 +497,9 @@ async def collect_all_links(filter_url: str) -> list[str]:
 
     Pagination strategy:
       1. Try standard next-page button selectors (works for OLX).
-      2. Fall back to incrementing ?page=N in the URL (works for Otomoto/Otodom).
-      3. Stop when a page yields zero new links (safe for both strategies).
+      2. If there is no "Dalej", follow the next numbered pagination link.
+      3. Fall back to incrementing ?page=N in the URL (Otomoto/Otodom).
+      4. Stop when a page yields zero new links (safe for both strategies).
     """
     from playwright.async_api import async_playwright
 
@@ -522,10 +589,17 @@ async def collect_all_links(filter_url: str) -> list[str]:
                 except Exception:
                     continue
 
-            # 2. URL-based fallback — Otomoto and Otodom use ?page=N.
-            #    OLX uses button-only pagination; if buttons yielded nothing
-            #    for OLX that means we're truly done, so we restrict the
-            #    URL-increment fallback to otomoto/otodom only.
+            # 2. Numbered-pagination fallback — OLX sometimes has only
+            #    "1", "2", "3", ... and no "Dalej" button.  Pick the next
+            #    numbered link instead of assuming the forward button exists.
+            if not nxt:
+                nxt = await _next_page_by_number(
+                    page, page_n, base, current
+                )
+
+            # 3. URL-based fallback — Otomoto and Otodom use ?page=N.
+            #    Keep this after numbered-link detection so an explicit link
+            #    rendered by the site always wins.
             if not nxt:
                 site = _site(current)
                 if site in ("otomoto", "otodom"):

@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     DB_POOL_SIZE: int = 5
     DB_MAX_OVERFLOW: int = 10
     DB_POOL_TIMEOUT: int = 30
-    DB_POOL_RECYCLE: int = 3600
+    DB_POOL_RECYCLE: int = 300
     DB_POOL_PRE_PING: bool = True
     ALEMBIC_VERSION_TABLE_NAME: str = "adagent_alembic_version"
 

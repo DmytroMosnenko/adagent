@@ -40,9 +40,26 @@ async def create_checkout_session(
 
 
 def parse_webhook(payload: bytes, sig_header: str) -> stripe.Event:
+    """
+    Verify Stripe webhook signature and return the parsed Event.
+
+    Raises stripe.error.SignatureVerificationError if the signature is invalid.
+    Must receive the raw request bytes — do NOT parse the body before calling this.
+    """
     return stripe.Webhook.construct_event(
         payload, sig_header, settings.STRIPE_WEBHOOK_SECRET
     )
+
+
+def get_session_dict(event: stripe.Event) -> dict:
+    """
+    Extract the checkout.Session from a webhook event as a plain dict.
+
+    stripe.Session is not a dict — calling .get() on it raises AttributeError.
+    Use this helper in webhook handlers instead of accessing session fields directly,
+    so standard dict access (.get, subscript) works as expected.
+    """
+    return event["data"]["object"].to_dict()
 
 
 def period_end_to_datetime(ts: int) -> datetime:

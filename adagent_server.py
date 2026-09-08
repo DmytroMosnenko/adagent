@@ -347,17 +347,17 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     logger.info("[webhook] %s", etype)
 
     if etype == "checkout.session.completed":
-        session = event["data"]["object"]
+        session = stripe_client.get_session_dict(event)
         await _handle_checkout_completed(db, session)
 
     elif etype in ("customer.subscription.updated", "customer.subscription.deleted"):
-        sub = event["data"]["object"]
+        sub = event["data"]["object"].to_dict()
         status = "canceled" if etype.endswith("deleted") else sub["status"]
         period_end = stripe_client.period_end_to_datetime(sub["current_period_end"])
         await crud.update_subscription_status(db, sub["id"], status, period_end)
 
     elif etype == "invoice.payment_failed":
-        inv = event["data"]["object"]
+        inv = event["data"]["object"].to_dict()
         sub_id = inv.get("subscription")
         if sub_id:
             await crud.update_subscription_status(db, sub_id, "past_due")

@@ -334,7 +334,7 @@ async def subscribe_success(
 
 @app.post("/webhooks/stripe")
 async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
-    payload    = await request.body()
+    payload = await request.body()
     sig_header = request.headers.get("stripe-signature", "")
 
     try:
@@ -357,7 +357,13 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
         if not sub_id:
             logger.warning("[webhook] Missing subscription ID in event %s", etype)
             return {"ok": False}
-        raw_period_end = sub.get("current_period_end")
+
+        current_invoice_period = sub.get("current_invoice_period")
+        if current_invoice_period and isinstance(current_invoice_period, dict):
+            raw_period_end = current_invoice_period.get("end")
+        else:
+            raw_period_end = sub.get("current_period_end")
+
         period_end = stripe_client.period_end_to_datetime(raw_period_end) if raw_period_end else None
         await crud.update_subscription_status(
             db=db,
@@ -397,26 +403,40 @@ async def _handle_checkout_completed(db: AsyncSession, session: dict) -> None:
     sub = await stripe.Subscription.retrieve_async(subscription_id)
 
     price_id = None
-    if "plan" in sub and sub["plan"]:
-        price_id = sub["plan"]["id"]
-    elif "items" in sub and sub["items"].get("data"):
-        price_id = sub["items"]["data"][0]["price"]["id"]
+    sub_plan = sub.get("plan")
+    sub_items = sub.get("items")
+
+    if sub_plan and isinstance(sub_plan, dict):
+        price_id = sub_plan.get("id")
+    elif sub_items and hasattr(sub_items, "get"):
+        items_data = sub_items.get("data", [])
+        if items_data and len(items_data) > 0:
+            item_price = items_data[0].get("price")
+            if item_price:
+                price_id = item_price.get("id")
 
     if not price_id:
         logger.error("[webhook] Could not find price_id in subscription %s", subscription_id)
         return
 
     plan = stripe_client.detect_plan_period(price_id)
-    period_end = stripe_client.period_end_to_datetime(sub["current_period_end"])
+
+    current_invoice_period = sub.get("current_invoice_period")
+    if current_invoice_period and isinstance(current_invoice_period, dict):
+        raw_period_end = current_invoice_period.get("end")
+    else:
+        raw_period_end = sub.get("current_period_end")
+
+    period_end = stripe_client.period_end_to_datetime(raw_period_end) if raw_period_end else None
 
     await crud.upsert_subscription(
-        db,
+        db=db,
         user_id=user.id,
         stripe_customer_id=customer_id or "",
         stripe_subscription_id=subscription_id,
         stripe_price_id=price_id,
         plan_period=plan,
-        status=sub["status"],
+        status=sub.get("status", "active"),
         current_period_end=period_end,
     )
 

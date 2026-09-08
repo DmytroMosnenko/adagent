@@ -66,6 +66,36 @@ def period_end_to_datetime(ts: int) -> datetime:
     return datetime.fromtimestamp(ts, tz=timezone.utc).replace(tzinfo=None)
 
 
+def extract_current_period_end(sub: dict) -> Optional[int]:
+    """
+    Return the current period end (unix timestamp) from a Subscription dict,
+    handling both the old and new Stripe API shapes.
+
+    As of API version 2026-07-29 ("dahlia"), Stripe removed
+    `current_period_end` / `current_invoice_period` from the top-level
+    Subscription object. The field now lives per subscription item, at
+    `items.data[N].current_period_end`. This checks, in order:
+      1. `current_invoice_period.end`      (older transitional shape)
+      2. top-level `current_period_end`    (pre-dahlia shape)
+      3. `items.data[0].current_period_end` (dahlia+ shape)
+    """
+    current_invoice_period = sub.get("current_invoice_period")
+    if isinstance(current_invoice_period, dict) and current_invoice_period.get("end"):
+        return current_invoice_period["end"]
+
+    if sub.get("current_period_end"):
+        return sub["current_period_end"]
+
+    items = sub.get("items")
+    items_data = items.get("data") if isinstance(items, dict) else None
+    if items_data:
+        first_item = items_data[0]
+        if isinstance(first_item, dict) and first_item.get("current_period_end"):
+            return first_item["current_period_end"]
+
+    return None
+
+
 def detect_plan_period(price_id: str) -> str:
     """Map price_id back to plan period name for display."""
     for period, pid in settings.stripe_prices.items():

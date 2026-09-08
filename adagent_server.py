@@ -358,12 +358,7 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
             logger.warning("[webhook] Missing subscription ID in event %s", etype)
             return {"ok": False}
 
-        current_invoice_period = sub.get("current_invoice_period")
-        if current_invoice_period and isinstance(current_invoice_period, dict):
-            raw_period_end = current_invoice_period.get("end")
-        else:
-            raw_period_end = sub.get("current_period_end")
-
+        raw_period_end = stripe_client.extract_current_period_end(sub)
         period_end = stripe_client.period_end_to_datetime(raw_period_end) if raw_period_end else None
         await crud.update_subscription_status(
             db=db,
@@ -423,13 +418,15 @@ async def _handle_checkout_completed(db: AsyncSession, session: dict) -> None:
 
     plan = stripe_client.detect_plan_period(price_id)
 
-    current_invoice_period = sub.get("current_invoice_period")
-    if current_invoice_period and isinstance(current_invoice_period, dict):
-        raw_period_end = current_invoice_period.get("end")
-    else:
-        raw_period_end = sub.get("current_period_end")
-
+    raw_period_end = stripe_client.extract_current_period_end(sub)
     period_end = stripe_client.period_end_to_datetime(raw_period_end) if raw_period_end else None
+
+    if period_end is None:
+        logger.error(
+            "[webhook] Could not determine current_period_end for subscription %s — "
+            "check Stripe API version / response shape", subscription_id
+        )
+        return
 
     await crud.upsert_subscription(
         db=db,

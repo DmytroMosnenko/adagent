@@ -35,6 +35,23 @@ class Settings(BaseSettings):
     STRIPE_SUCCESS_URL: str = "https://adagent.dimosense.com/subscribe/success"
     STRIPE_CANCEL_URL: str = "https://adagent.dimosense.com/subscribe"
 
+    # ── Email backend ──────────────────────────────────────────────────────────
+    # "smtp" → local/remote Postfix via SMTP  |  "ses" → AWS SES
+    EMAIL_BACKEND: str = "smtp"
+    EMAIL_FROM: str = "noreply@dimosense.com"
+
+    # ── SMTP (Postfix on the same Hetzner box, or any relay) ───────────────────
+    # Postfix typically listens on localhost:25 (no auth, no TLS needed for
+    # loopback) or localhost:587 with STARTTLS if you configured submission.
+    # Leave SMTP_USERNAME / SMTP_PASSWORD empty for unauthenticated relay.
+    SMTP_HOST: str = "localhost"
+    SMTP_PORT: int = 25
+    SMTP_USE_STARTTLS: bool = False   # set True + port 587 for submission
+    SMTP_USE_SSL: bool = False         # set True + port 465 for SMTPS
+    SMTP_USERNAME: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_TIMEOUT: int = 10             # seconds
+
     # ── AWS SES ────────────────────────────────────────────────────────────────
     AWS_REGION: str = "eu-west-1"
     AWS_SES_FROM_EMAIL: str = "noreply@dimosense.com"

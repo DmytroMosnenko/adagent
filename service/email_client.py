@@ -1,11 +1,70 @@
+"""email_client.py – dual-backend transactional email (SMTP / AWS SES).
+
+Backend is selected at startup via ``settings.EMAIL_BACKEND``:
+  * ``"smtp"``  – sends through a local or remote Postfix/relay using smtplib
+                  (no extra dependencies; works with unauthenticated localhost:25
+                  or authenticated STARTTLS/SMTPS submission ports).
+  * ``"ses"``   – sends through AWS Simple Email Service using boto3 (legacy,
+                  kept for easy rollback).
+
+Public API (unchanged from the SES-only version):
+  await send_magic_link(email, token) -> bool
+  await send_subscription_welcome(email, token) -> bool
+"""
 from __future__ import annotations
+
 import asyncio
-import boto3
-from botocore.exceptions import BotoCoreError, ClientError
+import smtplib
+import ssl
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+
 from .config import settings
 from .logger import get_logger
 
 logger = get_logger(__name__)
+
+
+# ── SMTP backend ───────────────────────────────────────────────────────────────
+
+def _smtp_send(to: str, subject: str, body_text: str, body_html: str) -> bool:
+    """Blocking SMTP send; runs in a thread-pool via asyncio.to_thread."""
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = settings.EMAIL_FROM
+    msg["To"] = to
+    msg.attach(MIMEText(body_text, "plain", "utf-8"))
+    msg.attach(MIMEText(body_html, "html", "utf-8"))
+
+    try:
+        if settings.SMTP_USE_SSL:
+            context = ssl.create_default_context()
+            cls = smtplib.SMTP_SSL
+            kwargs = {"host": settings.SMTP_HOST, "port": settings.SMTP_PORT,
+                      "context": context, "timeout": settings.SMTP_TIMEOUT}
+        else:
+            cls = smtplib.SMTP
+            kwargs = {"host": settings.SMTP_HOST, "port": settings.SMTP_PORT,
+                      "timeout": settings.SMTP_TIMEOUT}
+
+        with cls(**kwargs) as smtp:
+            if settings.SMTP_USE_STARTTLS and not settings.SMTP_USE_SSL:
+                smtp.ehlo()
+                smtp.starttls(context=ssl.create_default_context())
+                smtp.ehlo()
+            if settings.SMTP_USERNAME:
+                smtp.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
+            smtp.sendmail(settings.EMAIL_FROM, [to], msg.as_bytes())
+
+        logger.info("[smtp] sent %r to %s", subject, to)
+        return True
+
+    except (smtplib.SMTPException, OSError) as exc:
+        logger.error("[smtp] failed to send to %s: %s", to, exc)
+        return False
+
+
+# ── SES backend ────────────────────────────────────────────────────────────────
 
 _ses = None
 
@@ -13,6 +72,7 @@ _ses = None
 def _get_ses():
     global _ses
     if _ses is None:
+        import boto3  # lazy import – not needed when backend == "smtp"
         _ses = boto3.client(
             "ses",
             region_name=settings.AWS_REGION,
@@ -21,6 +81,37 @@ def _get_ses():
         )
     return _ses
 
+
+def _ses_send(to: str, subject: str, body_text: str, body_html: str) -> bool:
+    from botocore.exceptions import BotoCoreError, ClientError
+    try:
+        _get_ses().send_email(
+            Source=settings.AWS_SES_FROM_EMAIL,
+            Destination={"ToAddresses": [to]},
+            Message={
+                "Subject": {"Data": subject, "Charset": "UTF-8"},
+                "Body": {
+                    "Text": {"Data": body_text, "Charset": "UTF-8"},
+                    "Html": {"Data": body_html, "Charset": "UTF-8"},
+                },
+            },
+        )
+        logger.info("[ses] sent %r to %s", subject, to)
+        return True
+    except (BotoCoreError, ClientError) as exc:
+        logger.error("[ses] failed to send to %s: %s", to, exc)
+        return False
+
+
+# ── Backend dispatcher ─────────────────────────────────────────────────────────
+
+def _send(to: str, subject: str, body_text: str, body_html: str) -> bool:
+    if settings.EMAIL_BACKEND == "ses":
+        return _ses_send(to, subject, body_text, body_html)
+    return _smtp_send(to, subject, body_text, body_html)
+
+
+# ── Public helpers ─────────────────────────────────────────────────────────────
 
 async def send_magic_link(email: str, token: str) -> bool:
     url = f"{settings.APP_BASE_URL}/auth/verify/{token}"
@@ -64,7 +155,7 @@ async def send_subscription_welcome(email: str, token: str) -> bool:
     )
     body_html = f"""
 <html><body style="font-family:sans-serif;max-width:520px;margin:40px auto;color:#1e293b">
-  <h2 style="color:#1e3a5f">🎉 Welcome to AdAgent Pro!</h2>
+  <h2 style="color:#1e3a5f">&#127881; Welcome to AdAgent Pro!</h2>
   <p>Your subscription is now active. You can now analyze all ads in any OLX search.</p>
   <p style="margin:28px 0">
     <a href="{url}"
@@ -79,23 +170,3 @@ async def send_subscription_welcome(email: str, token: str) -> bool:
 </body></html>"""
 
     return await asyncio.to_thread(_send, email, subject, body_text, body_html)
-
-
-def _send(to: str, subject: str, body_text: str, body_html: str) -> bool:
-    try:
-        _get_ses().send_email(
-            Source=settings.AWS_SES_FROM_EMAIL,
-            Destination={"ToAddresses": [to]},
-            Message={
-                "Subject": {"Data": subject, "Charset": "UTF-8"},
-                "Body": {
-                    "Text": {"Data": body_text, "Charset": "UTF-8"},
-                    "Html": {"Data": body_html, "Charset": "UTF-8"},
-                },
-            },
-        )
-        logger.info("[ses] sent %r to %s", subject, to)
-        return True
-    except (BotoCoreError, ClientError) as exc:
-        logger.error("[ses] failed to send to %s: %s", to, exc)
-        return False

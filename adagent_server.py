@@ -351,23 +351,38 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
         await _handle_checkout_completed(db, session)
 
     elif etype in ("customer.subscription.updated", "customer.subscription.deleted"):
-        sub = event["data"]["object"].to_dict()
-        status = "canceled" if etype.endswith("deleted") else sub["status"]
-        period_end = stripe_client.period_end_to_datetime(sub["current_period_end"])
-        await crud.update_subscription_status(db, sub["id"], status, period_end)
+        sub = event["data"]["object"]
+        sub_id = sub.get("id")
+        status = "canceled" if etype.endswith("deleted") else sub.get("status", "active")
+        if not sub_id:
+            logger.warning("[webhook] Missing subscription ID in event %s", etype)
+            return {"ok": False}
+        raw_period_end = sub.get("current_period_end")
+        period_end = stripe_client.period_end_to_datetime(raw_period_end) if raw_period_end else None
+        await crud.update_subscription_status(
+            db=db,
+            subscription_id=sub_id,
+            status=status,
+            current_period_end=period_end
+        )
 
     elif etype == "invoice.payment_failed":
-        inv = event["data"]["object"].to_dict()
+        inv = event["data"]["object"]
         sub_id = inv.get("subscription")
         if sub_id:
-            await crud.update_subscription_status(db, sub_id, "past_due")
+            await crud.update_subscription_status(
+                db=db,
+                subscription_id=sub_id,
+                status="past_due",
+                current_period_end=None
+            )
 
     return {"ok": True}
 
 
 async def _handle_checkout_completed(db: AsyncSession, session: dict) -> None:
     customer_email = session.get("customer_details", {}).get("email") or session.get("customer_email")
-    customer_id    = session.get("customer")
+    customer_id = session.get("customer")
     subscription_id = session.get("subscription")
 
     if not customer_email or not subscription_id:
@@ -379,12 +394,19 @@ async def _handle_checkout_completed(db: AsyncSession, session: dict) -> None:
     if customer_id and not user.stripe_customer_id:
         await crud.set_stripe_customer(db, user.id, customer_id)
 
-    # Retrieve subscription details from Stripe
-    import asyncio
-    import stripe as _stripe
-    sub = await asyncio.to_thread(_stripe.Subscription.retrieve, subscription_id)
-    price_id   = sub["items"]["data"][0]["price"]["id"]
-    plan       = stripe_client.detect_plan_period(price_id)
+    sub = await stripe.Subscription.retrieve_async(subscription_id)
+
+    price_id = None
+    if "plan" in sub and sub["plan"]:
+        price_id = sub["plan"]["id"]
+    elif "items" in sub and sub["items"].get("data"):
+        price_id = sub["items"]["data"][0]["price"]["id"]
+
+    if not price_id:
+        logger.error("[webhook] Could not find price_id in subscription %s", subscription_id)
+        return
+
+    plan = stripe_client.detect_plan_period(price_id)
     period_end = stripe_client.period_end_to_datetime(sub["current_period_end"])
 
     await crud.upsert_subscription(

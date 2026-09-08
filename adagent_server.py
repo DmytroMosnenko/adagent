@@ -400,7 +400,9 @@ async def _handle_checkout_completed(db: AsyncSession, session: dict) -> None:
     if customer_id and not user.stripe_customer_id:
         await crud.set_stripe_customer(db, user.id, customer_id)
 
-    sub = await stripe.Subscription.retrieve_async(subscription_id)
+    stripe_obj = await stripe.Subscription.retrieve_async(subscription_id)
+
+    sub = stripe_obj.to_dict()
 
     price_id = None
     sub_plan = sub.get("plan")
@@ -408,12 +410,12 @@ async def _handle_checkout_completed(db: AsyncSession, session: dict) -> None:
 
     if sub_plan and isinstance(sub_plan, dict):
         price_id = sub_plan.get("id")
-    elif sub_items and hasattr(sub_items, "get"):
+    elif sub_items and isinstance(sub_items, dict):
         items_data = sub_items.get("data", [])
         if items_data and len(items_data) > 0:
-            item_price = items_data[0].get("price")
-            if item_price:
-                price_id = item_price.get("id")
+            first_item = items_data[0]
+            if isinstance(first_item, dict) and first_item.get("price"):
+                price_id = first_item["price"].get("id")
 
     if not price_id:
         logger.error("[webhook] Could not find price_id in subscription %s", subscription_id)

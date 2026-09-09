@@ -362,7 +362,7 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
         period_end = stripe_client.period_end_to_datetime(raw_period_end) if raw_period_end else None
         await crud.update_subscription_status(
             db=db,
-            subscription_id=sub_id,
+            stripe_subscription_id=sub_id,
             status=status,
             current_period_end=period_end
         )
@@ -373,7 +373,7 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
         if sub_id:
             await crud.update_subscription_status(
                 db=db,
-                subscription_id=sub_id,
+                stripe_subscription_id=sub_id,
                 status="past_due",
                 current_period_end=None
             )

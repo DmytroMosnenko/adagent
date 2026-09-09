@@ -54,7 +54,7 @@ class Settings(BaseSettings):
 
     # ── AWS SES ────────────────────────────────────────────────────────────────
     AWS_REGION: str = "eu-west-1"
-    AWS_SES_FROM_EMAIL: str = "noreply@dimosense.com"
+    AWS_SES_FROM_EMAIL: str = "noreply-adagent@dimosense.com"
     AWS_ACCESS_KEY_ID: str = ""
     AWS_SECRET_ACCESS_KEY: str = ""
 

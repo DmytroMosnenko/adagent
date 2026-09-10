@@ -1,0 +1,6 @@
+{
+    "label": "Real Estate 🏠",
+    "description": "Apartments, houses, plots on OLX / Otodom",
+    "output": "structured",
+    "templated": false
+}

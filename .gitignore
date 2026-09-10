@@ -43,6 +43,7 @@ alembic/__pycache__/
 # Dependency directories
 .playwright
 prompts
+presets
 
 # Storage directories
 report_storage

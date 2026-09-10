@@ -152,6 +152,8 @@ details.raw>summary:hover{color:var(--text);background:#fafbfc}
 .raw-section-label{font-size:0.63rem;text-transform:uppercase;letter-spacing:.06em;
                    color:var(--muted);margin-bottom:4px}
 .raw-section p,.raw-section pre{font-size:0.8rem;color:var(--text);white-space:pre-wrap;word-break:break-word}
+.raw-section ul.fixes-list{margin:0;padding-left:18px;font-size:0.8rem;color:var(--text)}
+.raw-section ul.fixes-list li{margin-bottom:2px}
 
 #float-btn{position:fixed;bottom:22px;right:18px;background:var(--navy);color:#fff;
            border:none;border-radius:22px;padding:8px 16px 8px 12px;font-size:0.8rem;
@@ -287,6 +289,17 @@ details.raw>summary:hover{color:var(--text);background:#fafbfc}
       {% for p in ad.positives %}<span class="tag pos">✓ {{ p }}</span>{% endfor %}
       {% for f in ad.red_flags %}<span class="tag neg">⚠ {{ f }}</span>{% endfor %}
     </div>
+    {% endif %}
+    {% if ad.deep_dive.general_specs or ad.deep_dive.mentioned_fixes or ad.deep_dive.known_weak_points or ad.deep_dive.real_world_consumption %}
+    <details class="raw" open>
+      <summary>🔧 Full model &amp; reliability analysis</summary>
+      <div class="raw-body">
+        {% if ad.deep_dive.general_specs %}<div class="raw-section"><div class="raw-section-label">General specs (official)</div><p>{{ ad.deep_dive.general_specs }}</p></div>{% endif %}
+        {% if ad.deep_dive.mentioned_fixes %}<div class="raw-section"><div class="raw-section-label">All mentioned fixes / maintenance</div><ul class="fixes-list">{% for f in ad.deep_dive.mentioned_fixes %}<li>{{ f }}</li>{% endfor %}</ul></div>{% endif %}
+        {% if ad.deep_dive.known_weak_points %}<div class="raw-section"><div class="raw-section-label">Known weak points for this model</div><p>{{ ad.deep_dive.known_weak_points }}</p></div>{% endif %}
+        {% if ad.deep_dive.real_world_consumption %}<div class="raw-section"><div class="raw-section-label">Real-world fuel consumption</div><p>{{ ad.deep_dive.real_world_consumption }}</p></div>{% endif %}
+      </div>
+    </details>
     {% endif %}
     <details class="raw">
       <summary>Raw scraped data</summary>

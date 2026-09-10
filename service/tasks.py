@@ -11,6 +11,7 @@ from pathlib import Path
 from .config import settings
 from .db import async_session
 from . import crud, scraper, ai_client, report_builder
+from .prompts_registry import PRESETS
 from .logger import get_logger
 
 logger = get_logger(__name__)
@@ -70,6 +71,13 @@ async def run_analysis(report_id: str) -> None:
             ad_prompt      = report.custom_ad_prompt or ""
             summary_prompt = report.custom_summary_prompt or ""
 
+        # Preset metadata drives which AI-call variant and which output path
+        # to use below. Unknown/None preset (i.e. user-typed custom prompts)
+        # defaults to non-structured, non-templated — same as before.
+        preset_meta   = PRESETS.get(report.prompt_preset, {})
+        is_structured = preset_meta.get("output", "raw") == "structured"
+        is_templated  = preset_meta.get("templated", False)
+
         # ── 3+4. Extract content + AI-analyze each ad in one loop ─────────────
         # Merging the two phases means ads_analyzed increments as soon as each
         # ad is both scraped AND analyzed, giving a live counter on the status
@@ -99,7 +107,10 @@ async def run_analysis(report_id: str) -> None:
                 # -- Analyze --
                 logger.debug("[task] %s analyzing ad %d/%d", report_id, i + 1, total)
                 try:
-                    analysis = await ai_client.analyze_ad(data, ad_prompt)
+                    if is_templated:
+                        analysis = await ai_client.analyze_ad_templated(data, ad_prompt)
+                    else:
+                        analysis = await ai_client.analyze_ad(data, ad_prompt)
                 except Exception as exc:
                     analysis = f"AI ERROR: {exc}"
                     logger.warning("[task] ad analysis failed: %s", exc)
@@ -123,14 +134,17 @@ async def run_analysis(report_id: str) -> None:
         # ── 5. AI summary ──────────────────────────────────────────────────────
         logger.info("[task] %s generating summary", report_id)
         try:
-            summary_text = await ai_client.analyze_summary(results, summary_prompt)
+            if is_templated:
+                summary_text = await ai_client.analyze_summary_templated(results, summary_prompt)
+            else:
+                summary_text = await ai_client.analyze_summary(results, summary_prompt)
         except Exception as exc:
             summary_text = json.dumps({"market_summary": f"Summary failed: {exc}",
                                        "price_range": "", "average_price": "", "recommendation": ""})
             logger.warning("[task] summary failed: %s", exc)
 
         # ── 6. Build output ────────────────────────────────────────────────────
-        if report.prompt_preset:
+        if is_structured:
             # Full HTML report
             html = report_builder.build_html_report(
                 results=results,
@@ -155,7 +169,7 @@ async def run_analysis(report_id: str) -> None:
                     finished_at=datetime.now(timezone.utc).replace(tzinfo=None),
                 )
         else:
-            # Custom prompts — store JSON
+            # Custom prompts, or a preset with output="raw" (e.g. vehicles_detailed) — store JSON
             payload = json.dumps({
                 "ads": [{"url": r["url"], "analysis": r["analysis"]} for r in results],
                 "summary": summary_text,

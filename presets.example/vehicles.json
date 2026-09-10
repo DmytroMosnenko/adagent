@@ -1,0 +1,6 @@
+{
+    "label":       "Vehicles 🚗",
+    "description": "Cars, motorcycles, trucks on OLX / Otomoto",
+    "output": "structured",
+    "templated": false
+}

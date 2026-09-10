@@ -46,16 +46,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
 # ── Preset definitions (for the UI) ───────────────────────────────────────────
-PRESETS = {
-    "vehicles": {
-        "label":       "Vehicles 🚗",
-        "description": "Cars, motorcycles, trucks on OLX / Otomoto",
-    },
-    "realestate": {
-        "label":       "Real Estate 🏠",
-        "description": "Apartments, houses, plots on OLX / Otodom",
-    },
-}
+from service.prompts_registry import PRESETS
 
 
 # ── Startup ────────────────────────────────────────────────────────────────────

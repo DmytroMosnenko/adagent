@@ -131,3 +131,47 @@ async def analyze_summary(ad_analyses: list[dict], system_prompt: str) -> str:
         model=settings.OPENAI_SUMMARY_MODEL,
         max_tokens=settings.OPENAI_SUMMARY_MAX_TOKENS,
     )
+
+
+async def analyze_ad_templated(ad_data: dict, prompt_template: str) -> str:
+    """
+    Run per-ad analysis using a self-contained prompt template that embeds
+    its own instructions + {{AD_URL}} / {{AD_CONTENT}} placeholders
+    (as opposed to the system-prompt + code-built-user-message split used
+    by analyze_ad()). Sent as a single user message with a minimal system
+    prompt. Returns raw AI response string (free-form text, not JSON).
+    """
+    content = _format_ad(ad_data)
+    prompt = (
+        prompt_template
+        .replace("{{AD_URL}}", ad_data.get("url", ""))
+        .replace("{{AD_CONTENT}}", content)
+    )
+    return await _chat(
+        system="You are a meticulous data-extraction assistant. Follow the user's instructions exactly.",
+        user=prompt,
+        model=settings.OPENAI_AD_MODEL,
+        max_tokens=settings.OPENAI_AD_MAX_TOKENS,
+    )
+
+
+async def analyze_summary_templated(ad_analyses: list[dict], prompt_template: str) -> str:
+    """
+    Run summary analysis using a self-contained prompt template with an
+    {{ADS}} placeholder for the combined per-ad analyses.
+    ad_analyses: list of {url, analysis (str)}
+    Returns raw AI response string (free-form text, not JSON).
+    """
+    blocks = [
+        f"=== Ad #{i+1}  {r['url']} ===\n{r['analysis']}"
+        for i, r in enumerate(ad_analyses)
+        if not r.get("analysis", "").startswith("AI ERROR")
+    ]
+    combined = "\n\n".join(blocks) if blocks else "No ads were successfully analyzed."
+    prompt = prompt_template.replace("{{ADS}}", combined)
+    return await _chat(
+        system="You are a meticulous comparative analyst. Follow the user's instructions exactly.",
+        user=prompt,
+        model=settings.OPENAI_SUMMARY_MODEL,
+        max_tokens=settings.OPENAI_SUMMARY_MAX_TOKENS,
+    )

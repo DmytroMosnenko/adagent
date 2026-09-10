@@ -67,7 +67,7 @@ def _fallback_analysis(raw: str) -> dict:
         "rating": 5, "verdict": "unknown", "verdict_note": "",
         "summary": (raw or "")[:400], "specs": {}, "asking_price": None,
         "price_assessment": "unknown", "price_per_m2": None,
-        "red_flags": [], "positives": [],
+        "red_flags": [], "positives": [], "deep_dive": {},
     }
 
 
@@ -147,6 +147,7 @@ def _prepare_ad(result: dict) -> dict:
     verdict = p.get("verdict") or "unknown"
     price_a = p.get("price_assessment") or "unknown"
     url     = result.get("url", "")
+    deep_dive = p.get("deep_dive") or {}
 
     return {
         "url":                    url,
@@ -167,6 +168,12 @@ def _prepare_ad(result: dict) -> dict:
         "price_assessment_label": _PRICE_LABELS.get(price_a, ""),
         "red_flags":              p.get("red_flags") or [],
         "positives":              p.get("positives") or [],
+        "deep_dive": {
+            "general_specs":          deep_dive.get("general_specs") or "",
+            "mentioned_fixes":        deep_dive.get("mentioned_fixes") or [],
+            "known_weak_points":      deep_dive.get("known_weak_points") or "",
+            "real_world_consumption": deep_dive.get("real_world_consumption") or "",
+        },
         "raw": {
             "title":       raw.get("title", ""),
             "price":       raw.get("price", ""),

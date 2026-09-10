@@ -17,6 +17,7 @@ import asyncio
 import os
 import random
 from typing import Optional
+from datetime import datetime
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
 from .config import settings
@@ -705,6 +706,41 @@ async def _extract_one(url: str, ctx, PWTimeout) -> dict:
                         continue
                 if field not in data:
                     logger.debug("[scraper] field '%s' not found on %s", field, url)
+
+            # Check if all fields failed to parse (only 'url' is present)
+            if len(data) == 1 and fields:
+                try:
+                    page_content = await page.content()
+
+                    # Create dumps directory if it doesn't exist
+                    os.makedirs("dumps", exist_ok=True)
+
+                    # Generate a unique safe filename using a timestamp
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    # Remove protocols and replace slashes/colons for a safe filename
+                    safe_url = url.replace("https://", "").replace("http://", "").replace("/", "_").replace(":", "_")
+                    dump_path = os.path.join("dumps", f"dump_{timestamp}_{safe_url[:50]}.html")
+
+                    # Save HTML content to the file
+                    with open(dump_path, "w", encoding="utf-8") as f:
+                        f.write(page_content)
+
+                    logger.warning(
+                        "[scraper] No data found for ANY fields on %s. Page HTML dumped to: %s",
+                        url, dump_path
+                    )
+                except Exception as e:
+                    logger.error("[scraper] Failed to dump page content for %s: %s", url, e)
+
+                logger.warning("[scraper] No data found on %s (attempt %d/%d)",
+                               url, attempt + 1, _MAX_RETRIES + 1)
+                await page.close();
+                page = None
+                if attempt < _MAX_RETRIES:
+                    delay = _RETRY_BASE * (2 ** attempt) + random.uniform(2, 8)
+                    logger.info("[scraper] backing off %.1fs before retry", delay)
+                    await asyncio.sleep(delay)
+                    continue
 
             # ── Extract parameters ───────────────────────────────────────────
             params = await _extract_params(page, site)

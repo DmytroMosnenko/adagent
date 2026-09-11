@@ -18,18 +18,14 @@
       </p>
 
       <div class="notify-options">
-        <div class="notify-row{{ '' if user else ' disabled' }}">
-          {% if user %}
-            <input type="checkbox" id="notify-email-cb" {{ 'checked' if report.notify_email else '' }}>
-            <label for="notify-email-cb">📧 Send notification on email when finished</label>
-          {% else %}
-            <span class="tooltip-wrap" data-tooltip="Sign in to get notified by email">
-              <input type="checkbox" id="notify-email-cb" disabled>
-            </span>
-            <label for="notify-email-cb">📧 Send notification on email when finished</label>
-          {% endif %}
+        <div class="notify-row{{ ' disabled tooltip-wrap' if not user else '' }}"
+             {% if not user %}data-tooltip="Sign in to get notified by email"{% endif %}>
+          <input type="checkbox" id="notify-email-cb"
+                 {{ 'checked' if report.notify_email else '' }}
+                 {{ 'disabled' if not user else '' }}>
+          <label for="notify-email-cb">📧 Send notification on email when finished</label>
         </div>
-        <div class="notify-row">
+        <div class="notify-row" id="browser-notify-row">
           <input type="checkbox" id="notify-browser-cb">
           <label for="notify-browser-cb">🔔 Notify me in this browser when finished</label>
         </div>
@@ -90,7 +86,9 @@ let browserNotifyArmed = false;
 
 if (!("Notification" in window)) {
   browserCb.disabled = true;
-  browserCb.closest(".notify-row").classList.add("disabled");
+  const browserRow = document.getElementById("browser-notify-row");
+  browserRow.classList.add("disabled", "tooltip-wrap");
+  browserRow.dataset.tooltip = "Not supported in this browser";
 } else {
   browserNotifyArmed = Notification.permission === "granted" && browserCb.checked;
   browserCb.addEventListener("change", async () => {
@@ -114,14 +112,15 @@ if (!("Notification" in window)) {
   });
 }
 
-function fireBrowserNotification(status) {
+function armBrowserNotification(status) {
   if (!browserNotifyArmed) return;
   try {
-    new Notification(status === "failed" ? "AdAgent — analysis failed" : "AdAgent — report ready", {
-      body: status === "failed" ? "Your ad analysis couldn't be completed." : "Your ad analysis has finished.",
-      tag: `adagent-${REPORT_ID}`,
-    });
-  } catch (_) { /* ignore — some browsers require a service worker for background tabs */ }
+    sessionStorage.setItem("adagent-notify-pending", JSON.stringify({
+      reportId: REPORT_ID,
+      status: status,
+    }));
+    console.log("Notify:", sessionStorage.getItem("adagent-notify-pending"));
+  } catch (_) { /* storage unavailable (e.g. private browsing) — notification just won't fire */ }
 }
 
 async function poll() {
@@ -165,7 +164,11 @@ async function poll() {
     document.getElementById("progress-bar").style.width = pct + "%";
 
     if (status === "done" || status === "failed") {
-      fireBrowserNotification(status);
+      // Hand off to the report page instead of firing here — a Notification
+      // created right before we navigate away is unreliable (Firefox in
+      // particular tends to drop it), since this page's context gets torn
+      // down before the OS toast finishes displaying.
+      armBrowserNotification(status);
       window.location.href = `/report/${REPORT_ID}`;
       return;
     }

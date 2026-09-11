@@ -103,25 +103,31 @@ a { color: var(--navy); }
 
 /* ── NOTIFY OPTIONS (progress page) ── */
 .notify-options { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--border);
-                   display: flex; flex-direction: column; gap: 10px; align-items: flex-start;
+                   display: flex; flex-direction: column; gap: 10px; align-items: stretch;
                    text-align: left; }
-.notify-row { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--text); }
+/* Fixed first column (checkbox) so the two rows' checkboxes line up exactly,
+   whether or not a row carries the extra .disabled/.tooltip-wrap classes. */
+.notify-row { display: grid; grid-template-columns: 16px 1fr; column-gap: 8px;
+              align-items: center; position: relative; font-size: 0.85rem; color: var(--text); }
 .notify-row input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--navy); cursor: pointer; }
 .notify-row input[type=checkbox]:disabled { cursor: not-allowed; }
 .notify-row label { cursor: pointer; }
+.notify-row.disabled { cursor: not-allowed; }
 .notify-row.disabled label { color: var(--muted); cursor: not-allowed; }
+
 .notify-status { font-size: 0.76rem; color: var(--green); min-height: 1em; }
 
-.tooltip-wrap { position: relative; display: inline-flex; align-items: center; }
+/* Tooltip is applied to the whole .notify-row (not just the checkbox) so it
+   shows up when hovering the greyed-out label text too, not only the 16px box. */
 .tooltip-wrap::after {
   content: attr(data-tooltip);
-  position: absolute; bottom: 125%; left: 50%; transform: translateX(-50%) translateY(4px);
+  position: absolute; bottom: 100%; left: 8px; transform: translateY(4px);
   background: var(--text); color: #fff; font-size: 0.72rem; line-height: 1.3;
   padding: 6px 9px; border-radius: 6px; white-space: nowrap;
   opacity: 0; pointer-events: none; transition: opacity .15s, transform .15s;
   box-shadow: var(--shadow); z-index: 5;
 }
-.tooltip-wrap:hover::after { opacity: 1; transform: translateX(-50%) translateY(0); }
+.tooltip-wrap:hover::after { opacity: 1; transform: translateY(0); }
 
 /* ── UPGRADE BANNER ── */
 .upgrade-banner { background: #fef3c7; border: 1.5px solid #d97706; border-radius: 10px;

@@ -32,6 +32,43 @@ from service.tasks import run_analysis
 
 logger = get_logger(__name__)
 
+# Checks sessionStorage (set on the progress page right before it redirects
+# here) for a pending browser-notification flag matching this report, and
+# fires it now that we're on a page whose lifecycle won't be cut short by a
+# navigation. Injected into every report-serving response — see
+# _inject_notify_script() below and base.html's matching copy.
+_NOTIFY_SCRIPT = """<script>
+(function() {
+  try {
+    var raw = sessionStorage.getItem("adagent-notify-pending");
+    if (!raw) return;
+    sessionStorage.removeItem("adagent-notify-pending");
+    var data = JSON.parse(raw);
+    var pathId = window.location.pathname.split("/").filter(Boolean).pop();
+    if (data.reportId !== pathId) return;
+    if (!("Notification" in window) || Notification.permission !== "granted") return;
+    var n = new Notification(
+      data.status === "failed" ? "AdAgent \\u2014 analysis failed" : "AdAgent \\u2014 report ready",
+      {
+        body: data.status === "failed"
+          ? "Your ad analysis couldn't be completed."
+          : "Your ad analysis has finished.",
+        tag: "adagent-" + data.reportId,
+      }
+    );
+    n.onclick = function() { window.focus(); };
+  } catch (_) { /* ignore */ }
+})();
+</script>"""
+
+
+def _inject_notify_script(html: str) -> str:
+    """Inject the pending-notification checker into a pre-built static report
+    (these are read straight off disk and don't go through base.html)."""
+    if "</body>" in html:
+        return html.replace("</body>", _NOTIFY_SCRIPT + "</body>", 1)
+    return html + _NOTIFY_SCRIPT
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Path(settings.REPORT_STORAGE_PATH).mkdir(parents=True, exist_ok=True)
@@ -176,7 +213,7 @@ async def report_view(
     if report.prompt_preset and report.report_path:
         # Serve the pre-generated self-contained HTML report
         html = Path(report.report_path).read_text(encoding="utf-8")
-        return HTMLResponse(html)
+        return HTMLResponse(_inject_notify_script(html))
 
     if report.result_json:
         data = json.loads(report.result_json)

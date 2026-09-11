@@ -189,6 +189,33 @@ async def update_report(db: AsyncSession, report_id: str, **kwargs) -> None:
     await db.commit()
 
 
+async def set_report_notify_email(
+    db: AsyncSession, report_id: str, user_id: int, enabled: bool,
+) -> Optional[Report]:
+    """
+    Toggle the "email me when finished" flag for a report.
+
+    Only allowed for the report's owner. If the report is anonymous
+    (user_id is NULL — e.g. it was started before sign-in), the caller
+    claims it, which also makes it show up in their /history.
+    Returns the updated report, or None if not found / not owned by
+    this user.
+    """
+    report = await get_report(db, report_id)
+    if not report:
+        return None
+    if report.user_id is not None and report.user_id != user_id:
+        return None
+
+    values = {"notify_email": enabled}
+    if report.user_id is None:
+        values["user_id"] = user_id
+
+    await db.execute(update(Report).where(Report.id == report_id).values(**values))
+    await db.commit()
+    return await get_report(db, report_id)
+
+
 async def get_user_reports(db: AsyncSession, user_id: int, limit: int = 50) -> list[Report]:
     r = await db.execute(
         select(Report)

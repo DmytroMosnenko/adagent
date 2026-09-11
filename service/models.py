@@ -125,6 +125,8 @@ class Report(Base):
     ads_analyzed          = Column(Integer, nullable=True)           # actually processed by AI
     is_limited            = Column(Boolean, nullable=False, default=True,
                                    server_default=text("1"))         # True = free tier (5 ads)
+    notify_email          = Column(Boolean, nullable=False, default=False,
+                                   server_default=text("0"))         # email user on done/failed (logged-in only)
     report_path           = Column(String(512), nullable=True)       # path to .html (preset)
     result_json           = Column(Text, nullable=True)              # raw JSON (custom prompts)
     created_at            = Column(DateTime, server_default=text("CURRENT_TIMESTAMP"))

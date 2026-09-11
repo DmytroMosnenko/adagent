@@ -145,6 +145,46 @@ async def send_magic_link(email: str, token: str) -> bool:
     return await asyncio.to_thread(_send, email, subject, body_text, body_html)
 
 
+async def send_report_ready(email: str, report_id: str, status: str) -> bool:
+    """
+    Notify a signed-in user that their report finished (or failed).
+    Opt-in only — sent when Report.notify_email is set.
+    """
+    url = f"{settings.APP_BASE_URL}/report/{report_id}"
+
+    if status == "failed":
+        subject = "Your AdAgent report failed"
+        heading = "Your report couldn't be completed"
+        intro   = "Unfortunately something went wrong while analyzing your ads. You can open the report page for details, or start a new search."
+        btn_bg  = "#dc2626"
+        btn_txt = "View Details"
+    else:
+        subject = "Your AdAgent report is ready"
+        heading = "Your report is ready! &#127881;"
+        intro   = "The analysis you started has finished. Click below to view the full report."
+        btn_bg  = "#16a34a"
+        btn_txt = "View My Report"
+
+    body_text = f"{intro}\n\n{url}"
+    body_html = f"""
+<html><body style="font-family:sans-serif;max-width:520px;margin:40px auto;color:#1e293b">
+  <h2 style="color:#1e3a5f">{heading}</h2>
+  <p>{intro}</p>
+  <p style="margin:28px 0">
+    <a href="{url}"
+       style="background:{btn_bg};color:#fff;padding:12px 24px;border-radius:6px;
+              text-decoration:none;font-weight:700">
+      {btn_txt}
+    </a>
+  </p>
+  <p style="color:#94a3b8;font-size:13px">
+    Or copy this link: <a href="{url}">{url}</a>
+  </p>
+</body></html>"""
+
+    return await asyncio.to_thread(_send, email, subject, body_text, body_html)
+
+
 async def send_subscription_welcome(email: str, token: str) -> bool:
     url = f"{settings.APP_BASE_URL}/auth/verify/{token}"
     subject = "Welcome to AdAgent Pro!"

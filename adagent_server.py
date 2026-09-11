@@ -204,7 +204,34 @@ async def report_status(report_id: str, db: AsyncSession = Depends(get_db)):
         "ads_analyzed": report.ads_analyzed,
         "is_limited":   report.is_limited,
         "has_preset":   report.prompt_preset is not None,
+        "notify_email": report.notify_email,
     }
+
+
+@app.post("/api/report/{report_id}/notify")
+async def report_notify(
+    report_id: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    adagent_session: Optional[str] = Cookie(default=None),
+):
+    """
+    Toggle "email me when finished" for a report from the progress page.
+    Requires sign-in. If the report was started anonymously, checking the
+    box claims it for this account (so it also appears in /history).
+    """
+    user, _ = await _resolve_user_and_sub(adagent_session, db)
+    if not user:
+        raise HTTPException(401, "Sign in to enable email notifications")
+
+    body = await request.json()
+    enabled = bool(body.get("enabled", False))
+
+    report = await crud.set_report_notify_email(db, report_id, user.id, enabled)
+    if not report:
+        raise HTTPException(404, "Report not found or not owned by this account")
+
+    return {"ok": True, "notify_email": report.notify_email}
 
 
 # ── Auth ───────────────────────────────────────────────────────────────────────

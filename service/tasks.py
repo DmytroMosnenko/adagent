@@ -10,7 +10,7 @@ from pathlib import Path
 
 from .config import settings
 from .db import async_session
-from . import crud, scraper, ai_client, report_builder
+from . import crud, scraper, ai_client, report_builder, email_client
 from .prompts_registry import PRESETS
 from .logger import get_logger
 
@@ -26,6 +26,26 @@ def _prompt_paths(preset: str) -> tuple[str, str]:
         f"prompts/{preset}_ad.txt",
         f"prompts/{preset}_summary.txt",
     )
+
+
+async def _maybe_notify_finished(report_id: str, status: str) -> None:
+    """
+    Send the opt-in "your report is ready" email, if the user checked the
+    box on the progress page. Re-reads the report so we pick up a flag
+    that was toggled after the task started. Never raises — a failed
+    notification email must not affect the report's own status.
+    """
+    try:
+        async with async_session() as db:
+            report = await crud.get_report(db, report_id)
+            if not report or not report.notify_email or not report.user_id:
+                return
+            user = await crud.get_user_by_id(db, report.user_id)
+            if not user:
+                return
+        await email_client.send_report_ready(user.email, report_id, status=status)
+    except Exception as exc:
+        logger.warning("[task] %s finished-notification email failed: %s", report_id, exc)
 
 
 async def run_analysis(report_id: str) -> None:
@@ -85,6 +105,7 @@ async def run_analysis(report_id: str) -> None:
                     error_message=message,
                     finished_at=datetime.now(timezone.utc).replace(tzinfo=None),
                 )
+            await _maybe_notify_finished(report_id, "failed")
             return
 
         # ── 2. Apply freemium limit ────────────────────────────────────────────
@@ -197,6 +218,7 @@ async def run_analysis(report_id: str) -> None:
                     report_path=report_path,
                     finished_at=datetime.now(timezone.utc).replace(tzinfo=None),
                 )
+            await _maybe_notify_finished(report_id, "done")
         else:
             # Custom prompts, or a preset with output="raw" (e.g. vehicles_detailed) — store JSON
             payload = json.dumps({
@@ -211,6 +233,7 @@ async def run_analysis(report_id: str) -> None:
                     result_json=payload,
                     finished_at=datetime.now(timezone.utc).replace(tzinfo=None),
                 )
+            await _maybe_notify_finished(report_id, "done")
 
         logger.info("[task] %s done", report_id)
 
@@ -223,3 +246,4 @@ async def run_analysis(report_id: str) -> None:
                 error_message=str(exc),
                 finished_at=datetime.now(timezone.utc).replace(tzinfo=None),
             )
+        await _maybe_notify_finished(report_id, "failed")

@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import os
 import random
+import re
 from typing import Optional
 from datetime import datetime
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
@@ -33,6 +34,11 @@ _AD_BETWEEN_DELAY  = 1.2    # seconds between successive ad page opens
 _MAX_RETRIES       = 2      # retry attempts on 403 / timeout per ad
 _RETRY_BASE        = 8.0    # exponential back-off base (seconds)
 _JS_WAIT_TIMEOUT   = 10_000 # ms to wait for JS-rendered content selector
+
+# Retries for the *first* listing page only — a real 0-result search never
+# needs this, but a CloudFront/anti-bot block masquerading as "0 links" does.
+_LISTING_MAX_RETRIES = 2      # extra attempts after the first
+_LISTING_RETRY_BASE  = 12.0   # exponential back-off base (seconds)
 
 # ── URL / site helpers ─────────────────────────────────────────────────────────
 
@@ -94,6 +100,51 @@ _AD_SKIP_SELECTORS = (
     'div:has-text("Skip")',
     '[class*="skipAd"]',
     '[class*="skip-ad"]',
+)
+
+# Text fragments (checked case-insensitively against the rendered page text)
+# that indicate the listing page we got back is an anti-bot challenge / block
+# page rather than a real OLX/Otomoto/Otodom listing — used to decide whether
+# "0 links found" is worth retrying.
+_BLOCK_TEXT_INDICATORS = (
+    "attention required",
+    "checking your browser",
+    "just a moment",
+    "cf-browser-verification",
+    "access denied",
+    "unusual traffic",
+    "request unsuccessful",
+    "captcha",
+    "are you a robot",
+    "error 1020",
+    "ray id",
+    "przepraszamy, coś poszło nie tak",   # "sorry, something went wrong"
+)
+
+# OLX's result counter reads "Znaleźliśmy N ogłoszeń" ("We found N listings").
+# When N is 0, OLX still renders a row of unrelated "related ads" using the
+# same card markup as real results — so this has to be checked as an
+# explicit override, independent of how many cards were actually found on
+# the page (see _diagnose_listing_page). Confirmed against a live 0-result
+# OLX search (2026-09).
+_ZERO_RESULTS_COUNT_RE = re.compile(
+    r"znaleźliśmy\s+0\s+(?:ogłoszeń|ofert|wynik(?:ów|i)?)", re.IGNORECASE
+)
+
+# Text fragments that confirm a page genuinely rendered with zero matching
+# ads (real, filter-specific empty result), as opposed to a block. Confirmed
+# against real Otodom "0 results" pages (search, 2026-09): the exact string
+# is "Nie znaleźliśmy żadnych ogłoszeń". These are a fallback for when
+# _ZERO_RESULTS_COUNT_RE doesn't match (e.g. sites that don't use OLX's
+# "Znaleźliśmy N ogłoszeń" phrasing).
+_EMPTY_RESULT_TEXT_INDICATORS = (
+    "nie znaleźliśmy żadnych ogłoszeń",   # confirmed — Otodom
+    "brak wynik",                          # "brak wyników" — no results
+    "brak ogłoszeń",
+    "nie znaleźliśmy żadnych ofert",
+    "nie znaleziono ogłoszeń",
+    "0 ofert",
+    "no results found",
 )
 
 # Per-site content field selectors (multiple candidates, first match wins)
@@ -406,6 +457,134 @@ async def _check_ad_load_issues(page, url: str) -> None:
             continue
 
 
+def _dump_basename(url: str, tag: str, timestamp: str) -> str:
+    safe_url = url.replace("https://", "").replace("http://", "").replace("/", "_").replace(":", "_")
+    return f"dump_{tag}_{timestamp}_{safe_url[:50]}"
+
+
+def _dump_page_html(page_content: str, url: str, tag: str, timestamp: Optional[str] = None) -> str:
+    """
+    Save raw HTML to dumps/ for diagnosis, same pattern _extract_one() uses
+    for individual ad pages. Returns the dump path (or "" on failure).
+    Pass a shared `timestamp` (see _dump_page_state) to pair this up with a
+    screenshot of the same page under a matching filename.
+    """
+    try:
+        os.makedirs("dumps", exist_ok=True)
+        timestamp = timestamp or datetime.now().strftime("%Y%m%d_%H%M%S")
+        dump_path = os.path.join("dumps", f"{_dump_basename(url, tag, timestamp)}.html")
+        with open(dump_path, "w", encoding="utf-8") as f:
+            f.write(page_content)
+        return dump_path
+    except Exception as e:
+        logger.error("[scraper] failed to dump page content for %s: %s", url, e)
+        return ""
+
+
+async def _dump_page_screenshot(page, url: str, tag: str, timestamp: Optional[str] = None) -> str:
+    """
+    Save a full-page PNG screenshot to dumps/, alongside the HTML dump —
+    the raw HTML doesn't render the anti-bot challenge widget, cookie
+    banner, or "related ads" the same way a screenshot does, so having both
+    makes these dumps much faster to eyeball. Returns the path (or "" on
+    failure — never raises, this is best-effort diagnostics).
+    """
+    try:
+        os.makedirs("dumps", exist_ok=True)
+        timestamp = timestamp or datetime.now().strftime("%Y%m%d_%H%M%S")
+        shot_path = os.path.join("dumps", f"{_dump_basename(url, tag, timestamp)}.png")
+        await page.screenshot(path=shot_path, full_page=True, timeout=10_000)
+        return shot_path
+    except Exception as e:
+        logger.error("[scraper] failed to capture screenshot for %s: %s", url, e)
+        return ""
+
+
+async def _dump_page_state(page, page_content: str, url: str, tag: str) -> tuple[str, str]:
+    """
+    Dump both HTML and a full-page screenshot under matching filenames
+    (same tag + timestamp, .html vs .png). Returns (html_path, screenshot_path);
+    either may be "" if that half failed, but one failing never blocks the other.
+    """
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    html_path = _dump_page_html(page_content, url, tag, timestamp)
+    shot_path = await _dump_page_screenshot(page, url, tag, timestamp)
+    return html_path, shot_path
+
+
+async def _diagnose_listing_page(page, url: str, new_count: int) -> Optional[str]:
+    """
+    Called for the FIRST listing page only, after counting the ad cards
+    found on it (new_count). Returns None when new_count can simply be
+    trusted, or a diagnosis string that should override it:
+
+      - "confirmed_empty" — the page's own result counter explicitly says 0
+        (e.g. OLX's "Znaleźliśmy 0 ogłoszeń"), even if new_count > 0. OLX
+        still renders a row of "related ads you might like" on a genuine
+        zero-match search, which match the same card selectors as real
+        results — this catches that case so those unrelated ads don't get
+        reported as a match. Caller should discard any links collected.
+      - "blocked"  — new_count == 0 and the page looks like an anti-bot
+        challenge/error page rather than a real listing.
+      - "unknown"  — new_count == 0 and nothing matched either way; treated
+        as suspicious (caller retries), since a false retry is cheap but a
+        missed block isn't.
+      - None       — new_count > 0 and no explicit "0 results" counter was
+        found — trust the cards as real matches.
+
+    Always dumps the page HTML + a full-page screenshot when something
+    looks off, mirroring _extract_one()'s dump-on-failure behaviour.
+    """
+    try:
+        page_content = await page.content()
+    except Exception as e:
+        logger.error("[scraper] could not read page content for diagnosis on %s: %s", url, e)
+        return "unknown" if new_count == 0 else None
+
+    text_lower = page_content.lower()
+
+    # Highest-priority signal: the site's own result counter says 0, no
+    # matter how many cards actually rendered (see docstring above).
+    if _ZERO_RESULTS_COUNT_RE.search(text_lower):
+        html_path, shot_path = await _dump_page_state(page, page_content, url, "listing")
+        logger.warning(
+            "[scraper] page explicitly reports 0 results despite %d card(s) "
+            "rendered (likely unrelated 'you might also like' suggestions) — "
+            "discarding them. HTML: %s Screenshot: %s — %s",
+            new_count, html_path, shot_path, url,
+        )
+        return "confirmed_empty"
+
+    if new_count > 0:
+        return None  # real cards found, no override signal — trust them
+
+    html_path, shot_path = await _dump_page_state(page, page_content, url, "listing")
+
+    for needle in _BLOCK_TEXT_INDICATORS:
+        if needle in text_lower:
+            logger.warning(
+                "[scraper] 0 links on first listing page — looks BLOCKED "
+                "(matched %r). HTML: %s Screenshot: %s — %s",
+                needle, html_path, shot_path, url,
+            )
+            return "blocked"
+
+    for needle in _EMPTY_RESULT_TEXT_INDICATORS:
+        if needle in text_lower:
+            logger.info(
+                "[scraper] 0 links on first listing page — confirmed empty "
+                "result set (matched %r): %s", needle, url,
+            )
+            return "confirmed_empty"
+
+    logger.warning(
+        "[scraper] 0 links on first listing page — reason UNCLEAR (no known "
+        "block or empty-result markers found). Treating as a likely transient "
+        "issue. HTML: %s Screenshot: %s — %s", html_path, shot_path, url,
+    )
+    return "unknown"
+
+
 async def _wait_for_content(page, site: str) -> None:
     """
     Wait for JS-rendered content to appear.
@@ -491,10 +670,67 @@ async def _get_full_page_text(page) -> str:
 
 # ── Public API ─────────────────────────────────────────────────────────────────
 
-async def collect_all_links(filter_url: str) -> list[str]:
+async def collect_all_links(filter_url: str) -> tuple[list[str], str]:
     """
-    Crawl all listing pages and return unique ad URLs (no limit applied).
-    The caller is responsible for applying the freemium limit.
+    Crawl all listing pages and return (unique ad URLs, diagnosis). The
+    caller is responsible for applying the freemium limit.
+
+    diagnosis is one of:
+      - "ok"              — links is non-empty, real results were found.
+      - "confirmed_empty" — the search genuinely has 0 matching ads (site's
+                             own result counter said so, or a known "no
+                             results" message matched). links == [].
+      - "blocked"         — 0 links after retries, and at least one attempt
+                             looked like an anti-bot block/challenge page.
+      - "unknown"         — 0 links after retries, cause unclear.
+
+    Wraps _collect_all_links_once() with retry logic: if the very first
+    listing page comes back with 0 links, that's ambiguous — it can mean a
+    genuinely empty search, or CloudFront / bot-detection quietly serving a
+    challenge/error page instead of the real listing (this happens even
+    through the residential proxy). It's also ambiguous when the first page
+    *does* have cards — OLX shows "related ads" on a genuine 0-result search
+    using the same markup as real results. _diagnose_listing_page() looks at
+    the page's own result counter and content to sort this out:
+      - confirmed_empty → trust it immediately, no retry, return ([], "confirmed_empty").
+      - blocked/unknown  → treat as a transient block and retry with a fresh
+                            browser context + back-off, up to _LISTING_MAX_RETRIES
+                            extra attempts, before giving up.
+    """
+    last_diagnosis = "unknown"
+
+    for attempt in range(_LISTING_MAX_RETRIES + 1):
+        links, diagnosis = await _collect_all_links_once(filter_url)
+
+        if links:
+            return links, "ok"
+
+        if diagnosis == "confirmed_empty":
+            logger.info("[scraper] confirmed 0 results for %s — not retrying", filter_url)
+            return [], "confirmed_empty"
+
+        last_diagnosis = diagnosis
+        if attempt < _LISTING_MAX_RETRIES:
+            delay = _LISTING_RETRY_BASE * (2 ** attempt) + random.uniform(2, 8)
+            logger.warning(
+                "[scraper] link collection returned 0 links (reason=%s), "
+                "retrying whole crawl in %.1fs (attempt %d/%d): %s",
+                diagnosis, delay, attempt + 2, _LISTING_MAX_RETRIES + 1, filter_url,
+            )
+            await asyncio.sleep(delay)
+
+    logger.warning(
+        "[scraper] giving up after %d attempts, 0 links collected (last reason=%s): %s",
+        _LISTING_MAX_RETRIES + 1, last_diagnosis, filter_url,
+    )
+    return [], last_diagnosis
+
+
+async def _collect_all_links_once(filter_url: str) -> tuple[list[str], str]:
+    """
+    Single crawl attempt. Returns (links, diagnosis).
+    diagnosis is only meaningful when links is empty: one of
+    "confirmed_empty", "blocked", "unknown", or "" (links non-empty / n-a).
 
     Pagination strategy:
       1. Try standard next-page button selectors (works for OLX).
@@ -511,6 +747,7 @@ async def collect_all_links(filter_url: str) -> list[str]:
     # multiple filter pages, then preserve insertion order via a list.
     seen: set[str] = set()
     links: list[str] = []
+    diagnosis = ""
 
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(**_launch_opts())
@@ -539,9 +776,15 @@ async def collect_all_links(filter_url: str) -> list[str]:
                         body = await resp.text()
                         logger.warning("[scraper] %d body=%s", status, body[:5000])
 
+                    # A non-2xx on the very first page is unambiguous — this
+                    # is a block/error, never a real "0 results" response.
+                    if page_n == 1:
+                        diagnosis = "blocked"
                     break
             except Exception as exc:
                 logger.error("[scraper] listing page load failed: %s", exc)
+                if page_n == 1:
+                    diagnosis = "unknown"
                 break
 
             await _dismiss_consent(page)
@@ -564,9 +807,26 @@ async def collect_all_links(filter_url: str) -> list[str]:
             new_count = len(links) - prev_count
             logger.info("[scraper] page %d: +%d links (total %d)", page_n, new_count, len(links))
 
+            if page_n == 1:
+                # Always check the first page, even when cards were found:
+                # OLX renders "related ads" using the same card markup on a
+                # genuine 0-result search, so a non-zero new_count alone
+                # isn't proof of a real match — the page's own "Znaleźliśmy
+                # N ogłoszeń" counter is the more trustworthy signal.
+                kind = await _diagnose_listing_page(page, current, new_count)
+                if kind is not None:
+                    diagnosis = kind
+                    if kind == "confirmed_empty":
+                        # Whatever cards were found (real or "related ads"
+                        # suggestions) don't count — discard them.
+                        links = []
+                        seen.clear()
+                    break
+
             # Stop condition: no new links means we've exhausted the results
             if new_count == 0:
-                logger.info("[scraper] no new links on page %d — end of results", page_n)
+                if page_n > 1:
+                    logger.info("[scraper] no new links on page %d — end of results", page_n)
                 break
 
             # ── Find next page ──────────────────────────────────────────────
@@ -617,7 +877,7 @@ async def collect_all_links(filter_url: str) -> list[str]:
         await browser.close()
 
     logger.info("[scraper] collected %d unique ad links total", len(links))
-    return links
+    return links, diagnosis
 
 
 async def extract_ads(links: list[str]) -> list[dict]:
@@ -711,24 +971,12 @@ async def _extract_one(url: str, ctx, PWTimeout) -> dict:
             if len(data) == 1 and fields:
                 try:
                     page_content = await page.content()
-
-                    # Create dumps directory if it doesn't exist
-                    os.makedirs("dumps", exist_ok=True)
-
-                    # Generate a unique safe filename using a timestamp
-                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    # Remove protocols and replace slashes/colons for a safe filename
-                    safe_url = url.replace("https://", "").replace("http://", "").replace("/", "_").replace(":", "_")
-                    dump_path = os.path.join("dumps", f"dump_{timestamp}_{safe_url[:50]}.html")
-
-                    # Save HTML content to the file
-                    with open(dump_path, "w", encoding="utf-8") as f:
-                        f.write(page_content)
-
-                    logger.warning(
-                        "[scraper] No data found for ANY fields on %s. Page HTML dumped to: %s",
-                        url, dump_path
-                    )
+                    html_path, shot_path = await _dump_page_state(page, page_content, url, "ad")
+                    if html_path or shot_path:
+                        logger.warning(
+                            "[scraper] No data found for ANY fields on %s. HTML: %s Screenshot: %s",
+                            url, html_path, shot_path
+                        )
                 except Exception as e:
                     logger.error("[scraper] Failed to dump page content for %s: %s", url, e)
 

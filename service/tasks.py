@@ -51,12 +51,41 @@ async def run_analysis(report_id: str) -> None:
     try:
         # ── 1. Collect all links ───────────────────────────────────────────────
         logger.info("[task] %s collecting links from %s", report_id, report.filter_url)
-        all_links = await scraper.collect_all_links(report.filter_url)
+        all_links, link_diagnosis = await scraper.collect_all_links(report.filter_url)
         ads_found = len(all_links)
-        logger.info("[task] %s found %d links", report_id, ads_found)
+        logger.info("[task] %s found %d links (diagnosis=%s)", report_id, ads_found, link_diagnosis)
 
         async with async_session() as db:
             await crud.update_report(db, report_id, ads_found=ads_found)
+
+        if ads_found == 0:
+            # collect_all_links() already retried internally and, on a
+            # confirmed-empty diagnosis, gave up immediately — either way,
+            # surface this as a distinct failure (not a silent empty report)
+            # so the UI can offer a one-click retry instead of showing a
+            # report with nothing in it. Wording depends on *why* it's empty:
+            # a real 0-match search shouldn't tell the user it was "blocked".
+            logger.warning("[task] %s found 0 ads (diagnosis=%s) — failing so the UI can respond", report_id, link_diagnosis)
+            if link_diagnosis == "confirmed_empty":
+                message = (
+                    "No ads match this search. Your filters are valid — the site "
+                    "just doesn't currently have anything listed that fits them. "
+                    "Try widening your filters (price range, category, etc.)."
+                )
+            else:
+                message = (
+                    "No ads found for this search. This is usually a temporary "
+                    "block by the site rather than a real empty result — "
+                    "it's worth trying again."
+                )
+            async with async_session() as db:
+                await crud.update_report(
+                    db, report_id,
+                    status="failed",
+                    error_message=message,
+                    finished_at=datetime.now(timezone.utc).replace(tzinfo=None),
+                )
+            return
 
         # ── 2. Apply freemium limit ────────────────────────────────────────────
         links = all_links[:settings.FREE_ADS_LIMIT] if report.is_limited else all_links

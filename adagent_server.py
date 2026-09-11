@@ -160,8 +160,15 @@ async def report_view(
         })
 
     if report.status == "failed":
+        # tasks.py prefixes the confirmed-empty-result message with this
+        # exact phrase — used to soften the "failure" framing and skip the
+        # pointless "retry identical search" CTA when it's a real 0-match
+        # result rather than a scraping problem.
+        is_no_match = bool(report.error_message) and report.error_message.startswith("No ads match this search")
         return _tpl("error.html", request, {
             "message": report.error_message or "Analysis failed.",
+            "is_no_match": is_no_match,
+            "report": report,
             "user": user,
         })
 

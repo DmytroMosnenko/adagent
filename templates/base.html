@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{% block title %}AdAgent — AI-powered ad analysis{% endblock %}</title>
 <link rel="stylesheet" href="/static/style.css">
+<link rel="icon" type="image/png" href="/static/favicon.png">
+<link rel="apple-touch-icon" href="/static/favicon-180.png">
 {% block head %}{% endblock %}
 </head>
 <body>
@@ -28,30 +30,6 @@
 </nav>
 
 {% block content %}{% endblock %}
-
-<script>
-(function() {
-  try {
-    var raw = sessionStorage.getItem("adagent-notify-pending");
-    if (!raw) return;
-    sessionStorage.removeItem("adagent-notify-pending");
-    var data = JSON.parse(raw);
-    var pathId = window.location.pathname.split("/").filter(Boolean).pop();
-    if (data.reportId !== pathId) return;
-    if (!("Notification" in window) || Notification.permission !== "granted") return;
-    var n = new Notification(
-      data.status === "failed" ? "AdAgent — analysis failed" : "AdAgent — report ready",
-      {
-        body: data.status === "failed"
-          ? "Your ad analysis couldn't be completed."
-          : "Your ad analysis has finished.",
-        tag: "adagent-" + data.reportId,
-      }
-    );
-    n.onclick = function() { window.focus(); };
-  } catch (_) { /* sessionStorage unavailable, e.g. private browsing — skip */ }
-})();
-</script>
 
 </body>
 </html>

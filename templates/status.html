@@ -16,6 +16,9 @@
         This takes 1–3 minutes depending on the number of ads.<br>
         You can safely close this tab — the analysis continues in the background.
       </p>
+      <button type="button" id="go-to-report-btn" class="btn btn-green" style="display:none;margin-top:16px">
+        Open report →
+      </button>
 
       <div class="notify-options">
         <div class="notify-row{{ ' disabled tooltip-wrap' if not user else '' }}"
@@ -112,16 +115,107 @@ if (!("Notification" in window)) {
   });
 }
 
-function armBrowserNotification(status) {
+// Fires the OS-level notification right here, on the still-open status page —
+// no navigation has happened yet, so (unlike firing it right before a
+// redirect) the browser has time to actually display it.
+function fireNotification(status) {
   if (!browserNotifyArmed) return;
   try {
-    sessionStorage.setItem("adagent-notify-pending", JSON.stringify({
-      reportId: REPORT_ID,
-      status: status,
-    }));
-    console.log("Notify:", sessionStorage.getItem("adagent-notify-pending"));
-  } catch (_) { /* storage unavailable (e.g. private browsing) — notification just won't fire */ }
+    const n = new Notification(
+      status === "failed" ? "AdAgent — analysis failed" : "AdAgent — report ready",
+      {
+        body: status === "failed"
+          ? "Your ad analysis couldn't be completed."
+          : "Your ad analysis has finished.",
+        tag: "adagent-" + REPORT_ID,
+      }
+    );
+    n.onclick = function() {
+      window.focus();
+      window.location.href = `/report/${REPORT_ID}`;
+    };
+  } catch (_) { /* ignore */ }
 }
+
+// Swaps the spinner/progress UI for a button, so the notification stays
+// visible instead of being cut short by an immediate redirect.
+function revealReportButton(status) {
+  document.querySelector(".spinner").style.display = "none";
+  document.getElementById("status-msg").textContent =
+    status === "failed" ? "Analysis failed." : "Analysis complete.";
+  const btn = document.getElementById("go-to-report-btn");
+  btn.textContent = status === "failed" ? "View details →" : "Open report →";
+  btn.style.display = "inline-block";
+  btn.addEventListener("click", () => {
+    window.location.href = `/report/${REPORT_ID}`;
+  });
+}
+
+const ORIGINAL_TITLE = document.title;
+const BASE_FAVICON = "/static/favicon.png";
+let analysisDone = false;
+
+function setFaviconHref(href) {
+  let link = document.querySelector("link[rel~='icon']");
+  if (!link) {
+    link = document.createElement("link");
+    link.rel = "icon";
+    document.head.appendChild(link);
+  }
+  link.type = "image/png";
+  link.href = href;
+}
+
+// Rewrites the tab title and draws a small colored dot in the corner of the
+// real favicon — unlike Notification(), this needs no permission and can't
+// be silently suppressed by OS/browser settings, so it's a reliable
+// fallback signal for anyone who's tabbed away without granting (or
+// receiving) the OS notification.
+function setTabBadge(status) {
+  const color = status === "failed" ? "#dc2626" : "#16a34a";
+  document.title = (status === "failed" ? "⚠️ Failed — " : "✅ Ready — ") + ORIGINAL_TITLE;
+
+  const size = 32;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+
+  function drawDot() {
+    const r = 7;
+    const cx = size - r - 1;
+    const cy = size - r - 1;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, 2 * Math.PI);
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "#fff";
+    ctx.stroke();
+    setFaviconHref(canvas.toDataURL("image/png"));
+  }
+
+  const img = new Image();
+  img.onload = () => {
+    ctx.drawImage(img, 0, 0, size, size);
+    drawDot();
+  };
+  // If the base favicon can't be loaded for some reason, fall back to just
+  // the dot on a blank icon rather than showing nothing at all.
+  img.onerror = drawDot;
+  img.src = BASE_FAVICON;
+}
+
+function clearTabBadge() {
+  document.title = ORIGINAL_TITLE;
+  setFaviconHref(BASE_FAVICON);
+}
+
+// Only clear once the person actually comes back — no point reverting a
+// badge they haven't seen yet.
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && analysisDone) clearTabBadge();
+});
 
 async function poll() {
   try {
@@ -149,6 +243,12 @@ async function poll() {
           pct = 20 + Math.round((analyzed / Math.max(total, 1)) * 70);
         }
       }
+    } else if (status === "done" || status === "failed") {
+      // Previously this stayed at the default (5%) because only the
+      // "running" branch above ever set pct — invisible before since the
+      // page navigated away within a tick of completing, but now that we
+      // stay on the page (browser-notify case) the stale bar was visible.
+      pct = 100;
     }
 
     document.getElementById("status-msg").textContent = msg;
@@ -161,15 +261,22 @@ async function poll() {
         detail.textContent = "";
       }
     }
-    document.getElementById("progress-bar").style.width = pct + "%";
+    const progressBar = document.getElementById("progress-bar");
+    progressBar.style.width = pct + "%";
+    if (status === "failed") progressBar.style.background = "var(--red)";
 
     if (status === "done" || status === "failed") {
-      // Hand off to the report page instead of firing here — a Notification
-      // created right before we navigate away is unreliable (Firefox in
-      // particular tends to drop it), since this page's context gets torn
-      // down before the OS toast finishes displaying.
-      armBrowserNotification(status);
-      window.location.href = `/report/${REPORT_ID}`;
+      if (browserNotifyArmed) {
+        // Stay put: fire the notification while the page is still alive,
+        // and let the person click through (from the toast or the button)
+        // instead of yanking them into a navigation immediately.
+        fireNotification(status);
+        revealReportButton(status);
+        analysisDone = true;
+        setTabBadge(status);
+      } else {
+        window.location.href = `/report/${REPORT_ID}`;
+      }
       return;
     }
   } catch (_) { /* network hiccup – try again */ }

@@ -95,6 +95,26 @@ a{color:var(--blue)}
          font-size:0.73rem;font-weight:600;transition:opacity .2s;white-space:nowrap}
 .lb-jump:hover{opacity:.78}
 
+/* Leaderboard spoiler (collapsed tail of the ranking) */
+.lb-spoiler{position:relative}
+.lb-spoiler-rows{max-height:230px;overflow:hidden;position:relative;
+                 transition:max-height .45s ease}
+.lb-spoiler-rows::after{content:'';position:absolute;left:0;right:0;bottom:0;height:96px;
+                        background:linear-gradient(to bottom,rgba(255,255,255,0),var(--card));
+                        pointer-events:none;transition:opacity .3s}
+.lb-spoiler-rows .lb-row{opacity:.4;filter:saturate(.55);pointer-events:none;
+                         transition:opacity .3s}
+.lb-spoiler.expanded .lb-spoiler-rows{max-height:3000px}
+.lb-spoiler.expanded .lb-spoiler-rows::after{opacity:0}
+.lb-spoiler.expanded .lb-spoiler-rows .lb-row{opacity:1;filter:none;pointer-events:auto}
+.lb-spoiler-toggle{width:100%;display:flex;align-items:center;justify-content:center;gap:8px;
+                   padding:12px 20px;background:var(--gray-bg);border:none;
+                   border-top:1px solid var(--border);color:var(--navy);font-weight:700;
+                   font-size:0.8rem;cursor:pointer;transition:background .15s}
+.lb-spoiler-toggle:hover{background:var(--border)}
+.lb-spoiler-toggle-icon{display:inline-block;font-size:0.7rem;transition:transform .25s}
+.lb-spoiler.expanded .lb-spoiler-toggle-icon{transform:rotate(180deg)}
+
 /* Summary */
 .summary-card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);
               padding:20px;margin-bottom:20px}
@@ -204,7 +224,14 @@ details.raw>summary:hover{color:var(--text);background:#fafbfc}
   <p class="section-heading">🏆 Leaderboard — ranked by AI rating</p>
   <div class="leaderboard">
     <div class="lb-head">Top Picks</div>
+    {% set lb_max_visible = 3 %}
+    {% set lb_hidden_count = ads|length - lb_max_visible %}
+    {% set lb_use_spoiler = lb_hidden_count > 2 %}
     {% for ad in ads %}
+      {% if lb_use_spoiler and loop.index == lb_max_visible + 1 %}
+      <div class="lb-spoiler" id="lb-spoiler">
+        <div class="lb-spoiler-rows" id="lb-spoiler-rows">
+      {% endif %}
     <div class="lb-row" id="lb-{{ loop.index0 }}">
       <div class="lb-rank {% if loop.index==1 %}gold{% elif loop.index==2 %}silver{% elif loop.index==3 %}bronze{% endif %}">
         #{{ loop.index }}
@@ -228,6 +255,15 @@ details.raw>summary:hover{color:var(--text);background:#fafbfc}
       <div class="lb-price">{{ ad.asking_price }}</div>
       <a href="#ad-{{ loop.index0 }}" class="lb-jump" data-lb-id="lb-{{ loop.index0 }}">Details ↓</a>
     </div>
+      {% if lb_use_spoiler and loop.last %}
+        </div><!-- /.lb-spoiler-rows -->
+        <button type="button" class="lb-spoiler-toggle" id="lb-spoiler-toggle"
+                aria-expanded="false" aria-controls="lb-spoiler-rows">
+          <span class="lb-spoiler-toggle-text">Show {{ lb_hidden_count }} more ranked ad{{ 's' if lb_hidden_count != 1 else '' }}</span>
+          <span class="lb-spoiler-toggle-icon">▾</span>
+        </button>
+      </div><!-- /.lb-spoiler -->
+      {% endif %}
     {% endfor %}
   </div>
 </section>
@@ -324,6 +360,23 @@ details.raw>summary:hover{color:var(--text);background:#fafbfc}
 </button>
 
 <script>
+(function(){
+  const spoiler=document.getElementById('lb-spoiler');
+  if(spoiler){
+    const toggleBtn=document.getElementById('lb-spoiler-toggle');
+    const toggleText=toggleBtn.querySelector('.lb-spoiler-toggle-text');
+    const hiddenCount={{ lb_hidden_count if lb_use_spoiler else 0 }};
+    const showLabel='Show '+hiddenCount+' more ranked ad'+(hiddenCount!==1?'s':'');
+    toggleBtn.addEventListener('click',function(){
+      const expanded=spoiler.classList.toggle('expanded');
+      toggleBtn.setAttribute('aria-expanded',expanded?'true':'false');
+      toggleText.textContent=expanded?'Show less':showLabel;
+      if(!expanded){
+        spoiler.scrollIntoView({behavior:'smooth',block:'nearest'});
+      }
+    });
+  }
+})();
 (function(){
   const btn=document.getElementById('float-btn');
   const lbl=document.getElementById('float-label');

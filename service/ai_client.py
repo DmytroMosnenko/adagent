@@ -24,7 +24,7 @@ async def _chat(system: str, user: str, model: str, max_tokens: int, retries: in
         try:
             r = await _get_client().chat.completions.create(
                 model=model,
-                max_tokens=max_tokens,
+                max_completion_tokens=max_tokens,
                 messages=[
                     {"role": "system", "content": system},
                     {"role": "user",   "content": user},

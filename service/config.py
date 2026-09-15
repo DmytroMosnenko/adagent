@@ -60,10 +60,10 @@ class Settings(BaseSettings):
 
     # ── OpenAI ─────────────────────────────────────────────────────────────────
     OPENAI_API_KEY: str = ""
-    OPENAI_AD_MODEL: str = "gpt-4o-mini"
-    OPENAI_SUMMARY_MODEL: str = "gpt-4o-mini"
-    OPENAI_AD_MAX_TOKENS: int = 1024
-    OPENAI_SUMMARY_MAX_TOKENS: int = 1024
+    OPENAI_AD_MODEL: str = "gpt-5-nano"
+    OPENAI_SUMMARY_MODEL: str = "gpt-5-mini"
+    OPENAI_AD_MAX_TOKENS: int|None = None
+    OPENAI_SUMMARY_MAX_TOKENS: int|None = None
 
     # ── Auth ───────────────────────────────────────────────────────────────────
     SESSION_TTL_DAYS: int = 7

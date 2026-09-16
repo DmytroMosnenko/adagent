@@ -20,7 +20,7 @@ _PRICE_LABELS = {
 }
 
 
-def _rating_color(r: int) -> str:
+def _rating_color(r: float) -> str:
     if r >= 7: return "#16a34a"
     if r >= 5: return "#d97706"
     return "#dc2626"
@@ -64,7 +64,7 @@ def _build_spec_items(specs: dict) -> list[dict]:
 
 def _fallback_analysis(raw: str) -> dict:
     return {
-        "rating": 5, "verdict": "unknown", "verdict_note": "",
+        "rating": 5.0, "verdict": "unknown", "verdict_note": "",
         "summary": (raw or "")[:400], "specs": {}, "asking_price": None,
         "price_assessment": "unknown", "price_per_m2": None,
         "red_flags": [], "positives": [], "deep_dive": {},
@@ -143,7 +143,7 @@ def _prepare_ad(result: dict) -> dict:
     else:
         spec_items = ai_items
 
-    rating  = max(1, min(10, int(p.get("rating") or 5)))
+    rating  = max(1, min(10, float(p.get("rating") or 5.0)))
     verdict = p.get("verdict") or "unknown"
     price_a = p.get("price_assessment") or "unknown"
     url     = result.get("url", "")

@@ -130,6 +130,7 @@ a{color:var(--blue)}
 .ad-card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);
          border-left:5px solid var(--border);overflow:hidden;
          scroll-margin-top:58px}  /* offset for sticky AdAgent bar */
+#summary-title{scroll-margin-top:58px}  /* offset for sticky AdAgent bar */
 .ad-card.worth_viewing{border-left-color:var(--green)}
 .ad-card.maybe{border-left-color:var(--amber)}
 .ad-card.skip{border-left-color:var(--red)}
@@ -291,7 +292,7 @@ details.raw.deep-dive>summary:hover{background:#e1ecf9;color:var(--navy)}
 <!-- Market summary -->
 {% if market_summary %}
 <section id="summary">
-  <p class="section-heading">📊 Market Overview</p>
+  <p class="section-heading" id="summary-title">📊 Market Overview</p>
   <div class="summary-card">
     <p>{{ market_summary }}</p>
     <div class="summary-stats">
@@ -425,16 +426,23 @@ details.raw.deep-dive>summary:hover{background:#e1ecf9;color:var(--navy)}
 (function(){
   const sBtn=document.getElementById('float-btn-summary');
   const summarySection=document.getElementById('summary');
+  const summaryTitle=document.getElementById('summary-title');
   if(!sBtn||!summarySection)return;
   sBtn.addEventListener('click',function(){
-    summarySection.scrollIntoView({behavior:'smooth',block:'start'});
+    (summaryTitle||summarySection).scrollIntoView({behavior:'smooth',block:'start'});
   });
-  window.addEventListener('scroll',function(){
-    // Only offer the shortcut once the Overview section has scrolled out of view above —
-    // i.e. while the visitor is down in the Ad Details list and might want it back.
-    const pastSummary=summarySection.getBoundingClientRect().bottom<0;
-    sBtn.style.display=(window.scrollY>350&&pastSummary)?'flex':'none';
-  },{passive:true});
+  function updateSummaryBtn(){
+    // Show the shortcut whenever the Overview section itself isn't meaningfully on screen —
+    // whether that's because the visitor is still up at the leaderboard/top,
+    // or down browsing the Ad Details list. Hide it once Overview is actually visible
+    // (an 80px margin avoids hiding the button for just a sliver peeking into frame).
+    const r=summarySection.getBoundingClientRect();
+    const inView=r.top<window.innerHeight-80&&r.bottom>80;
+    sBtn.style.display=inView?'none':'flex';
+  }
+  updateSummaryBtn();
+  window.addEventListener('scroll',updateSummaryBtn,{passive:true});
+  window.addEventListener('resize',updateSummaryBtn,{passive:true});
 })();
 </script>
 </body>

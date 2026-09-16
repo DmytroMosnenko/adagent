@@ -121,8 +121,9 @@ a{color:var(--blue)}
 .summary-stats{display:flex;gap:24px;flex-wrap:wrap;padding-top:12px;border-top:1px solid var(--border)}
 .stat-label{font-size:0.68rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
 .stat-value{font-size:0.93rem;font-weight:700;color:var(--navy);margin-top:2px}
-.recommendation{margin-top:12px;padding-top:12px;border-top:1px solid var(--border);
-                font-size:0.87rem;color:var(--muted);font-style:italic}
+.recommendation{margin-top:14px;font-size:0.88rem;font-weight:600;color:#1e3a5f;
+                font-style:normal;background:var(--blue-bg);border:1px solid #bfdbfe;
+                border-radius:8px;padding:11px 14px;display:flex;gap:8px;align-items:flex-start}
 
 /* Ad cards */
 .ads-section{display:flex;flex-direction:column;gap:14px}
@@ -150,7 +151,12 @@ a{color:var(--blue)}
 .ad-price{font-weight:700;font-size:0.93rem;color:var(--navy)}
 .ad-rating-text{font-size:0.75rem;color:var(--muted)}
 .ad-body{padding:10px 20px}
-.ad-verdict-note{font-size:0.83rem;font-style:italic;color:var(--muted);margin-bottom:6px}
+.ad-verdict-note{font-size:0.85rem;font-weight:600;font-style:normal;color:var(--text);
+                 background:var(--gray-bg);border-left:3px solid var(--muted);
+                 border-radius:0 6px 6px 0;padding:8px 12px;margin-bottom:10px}
+.ad-card.worth_viewing .ad-verdict-note{background:var(--green-bg);border-left-color:var(--green);color:#14532d}
+.ad-card.maybe .ad-verdict-note{background:var(--amber-bg);border-left-color:var(--amber);color:#78350f}
+.ad-card.skip .ad-verdict-note{background:var(--red-bg);border-left-color:var(--red);color:#7f1d1d}
 .ad-summary{font-size:0.88rem;color:var(--text)}
 .ad-specs{display:flex;flex-wrap:wrap;gap:14px;padding:10px 20px;
           background:#fafbfc;border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
@@ -176,11 +182,25 @@ details.raw>summary:hover{color:var(--text);background:#fafbfc}
 .raw-section ul.fixes-list{margin:0;padding-left:18px;font-size:0.8rem;color:var(--text)}
 .raw-section ul.fixes-list li{margin-bottom:2px}
 
+/* Deep-dive (Full model & reliability analysis) — distinct from the plain "Raw scraped data" toggle */
+details.raw.deep-dive{border-top:1px solid var(--border);background:#f8fbff}
+details.raw.deep-dive>summary{color:var(--navy);font-weight:700;font-size:0.85rem;
+                              background:#eef4fb;padding:11px 20px}
+details.raw.deep-dive>summary:hover{background:#e1ecf9;color:var(--navy)}
+.raw-section-label.deep-dive-label{color:var(--navy);font-weight:700;font-size:0.71rem;
+                                   letter-spacing:.04em}
+
 #float-btn{position:fixed;bottom:22px;right:18px;background:var(--navy);color:#fff;
            border:none;border-radius:22px;padding:8px 16px 8px 12px;font-size:0.8rem;
            font-weight:700;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.2);
            display:none;align-items:center;gap:6px;z-index:200;transition:opacity .2s,transform .2s}
 #float-btn:hover{opacity:.88;transform:translateY(-2px)}
+
+#float-btn-summary{position:fixed;bottom:72px;right:18px;background:#fff;color:var(--navy);
+           border:1.5px solid var(--border);border-radius:22px;padding:7px 14px 7px 11px;
+           font-size:0.78rem;font-weight:700;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.14);
+           display:none;align-items:center;gap:6px;z-index:199;transition:opacity .2s,transform .2s}
+#float-btn-summary:hover{opacity:.85;transform:translateY(-2px);background:#f8fafc}
 
 @media(max-width:620px){
   .lb-row{grid-template-columns:34px minmax(0,1fr) 42px}
@@ -280,7 +300,7 @@ details.raw>summary:hover{color:var(--text);background:#fafbfc}
       {% if average_price_m2 %}<div><div class="stat-label">Avg. per m²</div><div class="stat-value">{{ average_price_m2 }}</div></div>{% endif %}
       <div><div class="stat-label">Ads analyzed</div><div class="stat-value">{{ total_ads }}</div></div>
     </div>
-    {% if recommendation %}<p class="recommendation">{{ recommendation }}</p>{% endif %}
+    {% if recommendation %}<p class="recommendation"><span>💡</span><span>{{ recommendation }}</span></p>{% endif %}
   </div>
 </section>
 {% endif %}
@@ -328,13 +348,13 @@ details.raw>summary:hover{color:var(--text);background:#fafbfc}
     </div>
     {% endif %}
     {% if ad.deep_dive.general_specs or ad.deep_dive.mentioned_fixes or ad.deep_dive.known_weak_points or ad.deep_dive.real_world_consumption %}
-    <details class="raw" open>
+    <details class="raw deep-dive" open>
       <summary>🔧 Full model &amp; reliability analysis</summary>
       <div class="raw-body">
-        {% if ad.deep_dive.general_specs %}<div class="raw-section"><div class="raw-section-label">General specs (official)</div><p>{{ ad.deep_dive.general_specs }}</p></div>{% endif %}
-        {% if ad.deep_dive.mentioned_fixes %}<div class="raw-section"><div class="raw-section-label">All mentioned fixes / maintenance</div><ul class="fixes-list">{% for f in ad.deep_dive.mentioned_fixes %}<li>{{ f }}</li>{% endfor %}</ul></div>{% endif %}
-        {% if ad.deep_dive.known_weak_points %}<div class="raw-section"><div class="raw-section-label">Known weak points for this model</div><p>{{ ad.deep_dive.known_weak_points }}</p></div>{% endif %}
-        {% if ad.deep_dive.real_world_consumption %}<div class="raw-section"><div class="raw-section-label">Real-world fuel consumption</div><p>{{ ad.deep_dive.real_world_consumption }}</p></div>{% endif %}
+        {% if ad.deep_dive.general_specs %}<div class="raw-section"><div class="raw-section-label deep-dive-label">General specs (official)</div><p>{{ ad.deep_dive.general_specs }}</p></div>{% endif %}
+        {% if ad.deep_dive.mentioned_fixes %}<div class="raw-section"><div class="raw-section-label deep-dive-label">All mentioned fixes / maintenance</div><ul class="fixes-list">{% for f in ad.deep_dive.mentioned_fixes %}<li>{{ f }}</li>{% endfor %}</ul></div>{% endif %}
+        {% if ad.deep_dive.known_weak_points %}<div class="raw-section"><div class="raw-section-label deep-dive-label">Known weak points for this model</div><p>{{ ad.deep_dive.known_weak_points }}</p></div>{% endif %}
+        {% if ad.deep_dive.real_world_consumption %}<div class="raw-section"><div class="raw-section-label deep-dive-label">Real-world fuel consumption</div><p>{{ ad.deep_dive.real_world_consumption }}</p></div>{% endif %}
       </div>
     </details>
     {% endif %}
@@ -355,6 +375,11 @@ details.raw>summary:hover{color:var(--text);background:#fafbfc}
 
 </div><!-- /.container -->
 
+{% if market_summary %}
+<button id="float-btn-summary" aria-label="Jump to market overview">
+  <span>📊</span><span>Overview</span>
+</button>
+{% endif %}
 <button id="float-btn" aria-label="Navigate back">
   <span>↑</span><span id="float-label">Top</span>
 </button>
@@ -395,6 +420,20 @@ details.raw>summary:hover{color:var(--text);background:#fafbfc}
   });
   window.addEventListener('scroll',function(){
     btn.style.display=window.scrollY>350?'flex':'none';
+  },{passive:true});
+})();
+(function(){
+  const sBtn=document.getElementById('float-btn-summary');
+  const summarySection=document.getElementById('summary');
+  if(!sBtn||!summarySection)return;
+  sBtn.addEventListener('click',function(){
+    summarySection.scrollIntoView({behavior:'smooth',block:'start'});
+  });
+  window.addEventListener('scroll',function(){
+    // Only offer the shortcut once the Overview section has scrolled out of view above —
+    // i.e. while the visitor is down in the Ad Details list and might want it back.
+    const pastSummary=summarySection.getBoundingClientRect().bottom<0;
+    sBtn.style.display=(window.scrollY>350&&pastSummary)?'flex':'none';
   },{passive:true});
 })();
 </script>

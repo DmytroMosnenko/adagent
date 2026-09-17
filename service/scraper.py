@@ -649,6 +649,52 @@ async def _dump_page_state(page, page_content: str, url: str, tag: str) -> tuple
     return html_path, shot_path
 
 
+async def _collect_listing_hrefs(page, selectors: tuple) -> list[str]:
+    """
+    Collect every href matched by `selectors`, excluding cards that belong
+    to OLX's widened-search section.
+
+    On a filter search with few matches, OLX renders a SECOND, duplicate
+    `[data-testid="listing-grid"]` container below a "Sprawdź ogłoszenia w
+    większej odległości" (check listings in a wider area) banner, holding
+    cards outside the original filter/distance — both OLX-native and
+    cross-posted Otomoto/Otodom cards, using the identical card markup as
+    the real results. There is no single URL-level marker that identifies
+    every such card: OLX's own links in that section carry
+    reason=extended_search_extended_distance, but Otomoto links in the same
+    section carry no distinguishing query parameter at all (confirmed
+    against a live page, 2026-09) — so per-link URL checks can't catch
+    every case. What's reliable is DOM position: everything in that second
+    listing-grid container comes after it in document order, so when a
+    page has two or more `[data-testid="listing-grid"]` elements, only
+    hrefs preceding the second one are kept. A page with zero or one such
+    container (a normal, non-widened result set, or an Otomoto/Otodom page
+    that doesn't use this OLX-specific container at all) has no boundary,
+    so every matching href is returned as before.
+    """
+    return await page.evaluate(
+        """(selectors) => {
+            const grids = Array.from(document.querySelectorAll('[data-testid="listing-grid"]'));
+            const boundary = grids.length >= 2 ? grids[1] : null;
+            const hrefs = [];
+            for (const sel of selectors) {
+                let els;
+                try { els = document.querySelectorAll(sel); } catch (e) { continue; }
+                for (const el of els) {
+                    if (boundary) {
+                        const pos = boundary.compareDocumentPosition(el);
+                        if (!(pos & Node.DOCUMENT_POSITION_PRECEDING)) continue;
+                    }
+                    const href = el.getAttribute('href') || '';
+                    if (href) hrefs.push(href);
+                }
+            }
+            return hrefs;
+        }""",
+        list(selectors),
+    )
+
+
 async def _diagnose_listing_page(page, url: str, new_count: int) -> Optional[str]:
     """
     Called for the FIRST listing page only, after counting the ad cards
@@ -935,16 +981,16 @@ async def _collect_all_links_once(filter_url: str) -> tuple[list[str], str]:
             # cross-domain cards: OLX native + Otomoto + Otodom in one page)
             prev_count = len(links)
             base = _origin(page.url)
-            for sel in _LISTING_SELECTORS:
-                try:
-                    for el in await page.query_selector_all(sel):
-                        raw  = await el.get_attribute("href") or ""
-                        full = _clean(_absolute(raw, base))
-                        if full and _is_ad(full) and full not in seen:
-                            seen.add(full)
-                            links.append(full)
-                except Exception:
-                    continue
+            try:
+                raw_hrefs = await _collect_listing_hrefs(page, _LISTING_SELECTORS)
+            except Exception as exc:
+                logger.warning("[scraper] listing href collection failed: %s", exc)
+                raw_hrefs = []
+            for raw in raw_hrefs:
+                full = _clean(_absolute(raw, base))
+                if full and _is_ad(full) and full not in seen:
+                    seen.add(full)
+                    links.append(full)
 
             new_count = len(links) - prev_count
             logger.info("[scraper] page %d: +%d links (total %d)", page_n, new_count, len(links))

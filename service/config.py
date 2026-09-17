@@ -80,6 +80,23 @@ class Settings(BaseSettings):
     PLAYWRIGHT_HEADLESS: bool = True
     PLAYWRIGHT_BROWSERS_PATH: str = "/opt/adagent/.playwright"
 
+    # ── Concurrency (global, fair-shared across all reports AND all uvicorn
+    #    workers) ─────────────────────────────────────────────────────────────
+    # True totals — your ScraperAPI plan's concurrent-thread cap, your OpenAI
+    # concurrent-request budget. Arbitration happens in the standalone
+    # concurrency_broker.py process (one per deployment, not per worker), so
+    # these numbers don't need to be divided by worker count: whichever
+    # worker actually has traffic gets access to the full limit.
+    SCRAPER_MAX_CONCURRENT_TOTAL: int = 20   # ScraperAPI concurrent-thread plan limit
+    OPENAI_MAX_CONCURRENT_TOTAL: int = 100   # OpenAI concurrent request budget
+
+    # Unix domain socket the broker listens on and adagent_server workers
+    # connect to. Same box only — this is not a network-reachable address.
+    # /run/adagent/ is created by systemd's RuntimeDirectory=adagent on the
+    # broker's own unit (see packaging/adagent-concurrency-broker.service) —
+    # both units must load the same secrets/env so they agree on this path.
+    CONCURRENCY_BROKER_SOCKET: str = "/run/adagent/concurrency.sock"
+
     # ── HTTP Proxy (optional) ───────────────────────────────────────────────────
     # OLX / Otomoto use CloudFront which blocks datacenter IPs (Hetzner, AWS…).
     # Set a residential or ISP proxy to route scraper traffic through a clean IP.

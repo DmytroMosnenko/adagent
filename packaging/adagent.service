@@ -1,7 +1,8 @@
 [Unit]
 Description=AdAgent FastAPI service
-After=network.target mariadb.service adagent-migrate.service
+After=network.target mariadb.service adagent-migrate.service adagent-concurrency-broker.service
 Requires=mariadb.service adagent-migrate.service
+Wants=adagent-concurrency-broker.service
 
 [Service]
 Type=simple

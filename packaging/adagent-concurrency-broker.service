@@ -1,0 +1,25 @@
+[Unit]
+Description=AdAgent concurrency-arbitration broker
+After=network.target
+Before=adagent.service
+
+[Service]
+Type=simple
+User=adagent
+Group=adagent
+WorkingDirectory=/opt/adagent
+EnvironmentFile=/opt/adagent/secrets/env
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONFAULTHANDLER=1
+# Creates /run/adagent (tmpfs), owned by adagent:adagent, removed on stop —
+# this is where CONCURRENCY_BROKER_SOCKET's default path points.
+RuntimeDirectory=adagent
+RuntimeDirectoryMode=0750
+ExecStart=/opt/adagent/venv/bin/python /opt/adagent/concurrency_broker.py
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/adagent/concurrency-broker.log
+StandardError=append:/var/log/adagent/concurrency-broker.log
+
+[Install]
+WantedBy=multi-user.target

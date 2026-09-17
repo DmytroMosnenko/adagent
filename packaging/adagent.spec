@@ -27,6 +27,7 @@ cp -r %{_sourcedir}/static        %{buildroot}/opt/adagent/static
 cp -r %{_sourcedir}/prompts.example     %{buildroot}/opt/adagent/prompts.example
 cp -r %{_sourcedir}/alembic             %{buildroot}/opt/adagent/alembic
 cp    %{_sourcedir}/adagent_server.py   %{buildroot}/opt/adagent/
+cp    %{_sourcedir}/concurrency_broker.py %{buildroot}/opt/adagent/
 cp    %{_sourcedir}/alembic.ini         %{buildroot}/opt/adagent/
 cp    %{_sourcedir}/requirements.txt    %{buildroot}/opt/adagent/
 
@@ -44,6 +45,8 @@ install -d %{buildroot}/var/log/adagent
 install -d %{buildroot}%{_unitdir}
 install -m 644 %{_sourcedir}/packaging/adagent.service \
                %{buildroot}%{_unitdir}/adagent.service
+install -m 644 %{_sourcedir}/packaging/adagent-concurrency-broker.service \
+               %{buildroot}%{_unitdir}/adagent-concurrency-broker.service
 install -m 644 %{_sourcedir}/packaging/adagent-migrate.service \
                %{buildroot}%{_unitdir}/adagent-migrate.service
 install -m 644 %{_sourcedir}/packaging/adagent-ssl_all_certs_renew.service \
@@ -71,6 +74,7 @@ install -m 644 %{_sourcedir}/packaging/adagent-logrotate \
 
 %defattr(-,root,root,-)
 %{_unitdir}/adagent.service
+%{_unitdir}/adagent-concurrency-broker.service
 %{_unitdir}/adagent-migrate.service
 %{_unitdir}/adagent-ssl_all_certs_renew.service
 %{_unitdir}/adagent-ssl_all_certs_renew.timer
@@ -117,9 +121,11 @@ if [ ! -f /etc/letsencrypt/live/adagent.dimosense.com/fullchain.pem ]; then
         -m amidtrader@gmail.com 2>&1 || true
 fi
 
-# Reload nginx, enable & restart service
+# Reload nginx, enable & restart services
 systemctl reload nginx 2>&1 || true
 systemctl daemon-reload
+systemctl enable adagent-concurrency-broker.service
+systemctl restart adagent-concurrency-broker.service
 systemctl enable adagent.service
 systemctl restart adagent.service
 systemctl enable adagent-ssl_all_certs_renew.timer
@@ -138,6 +144,8 @@ echo "===================================================================="
 if [ $1 -eq 0 ]; then
     systemctl stop    adagent.service 2>/dev/null || true
     systemctl disable adagent.service 2>/dev/null || true
+    systemctl stop    adagent-concurrency-broker.service 2>/dev/null || true
+    systemctl disable adagent-concurrency-broker.service 2>/dev/null || true
     systemctl stop    adagent-ssl_all_certs_renew.timer 2>/dev/null || true
     systemctl disable adagent-ssl_all_certs_renew.timer 2>/dev/null || true
 fi

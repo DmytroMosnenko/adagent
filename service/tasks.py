@@ -53,7 +53,8 @@ async def run_analysis(report_id: str) -> None:
     Main background task.  Steps:
       1. Collect all ad links
       2. Store total count; apply freemium limit
-      3+4. Extract + AI-analyze each ad in one loop (progress updated per ad)
+      3+4. Extract + AI-analyze all ads concurrently (progress updated as
+           each ad finishes — see _process_one_ad)
       5. AI summary
       6. Build HTML report (preset) or store JSON (custom)
       7. Mark report done
@@ -71,7 +72,7 @@ async def run_analysis(report_id: str) -> None:
     try:
         # ── 1. Collect all links ───────────────────────────────────────────────
         logger.info("[task] %s collecting links from %s", report_id, report.filter_url)
-        all_links, link_diagnosis = await scraper.collect_all_links(report.filter_url)
+        all_links, link_diagnosis = await scraper.collect_all_links(report.filter_url, report_id)
         ads_found = len(all_links)
         logger.info("[task] %s found %d links (diagnosis=%s)", report_id, ads_found, link_diagnosis)
 
@@ -128,66 +129,54 @@ async def run_analysis(report_id: str) -> None:
         is_structured = preset_meta.get("output", "raw") == "structured"
         is_templated  = preset_meta.get("templated", False)
 
-        # ── 3+4. Extract content + AI-analyze each ad in one loop ─────────────
-        # Merging the two phases means ads_analyzed increments as soon as each
-        # ad is both scraped AND analyzed, giving a live counter on the status
-        # page.  Previously extract_ads() ran to completion before any DB update
-        # so the counter stayed at 0 during the entire scraping phase.
+        # ── 3+4. Extract content + AI-analyze all ads concurrently ────────────
+        # Each ad is its own task: scrape (via scraper.scrape_ad, gated by the
+        # global proxy-concurrency limit) then AI-analyze (via ai_client,
+        # gated by the global OpenAI-concurrency limit). Ads run concurrently
+        # with each other — and concurrently with every other report's ads —
+        # while the two fair gates enforce the global limits and share them
+        # round-robin across reports. Order of completion is no longer
+        # index-based, so progress is tracked by a completion counter instead.
         logger.info("[task] %s extracting and analyzing %d ads", report_id, total)
-        results: list[dict] = []
 
-        # We need a single shared browser context across all ads (same as the
-        # original extract_ads() did) to avoid re-launching Playwright per ad.
-        import os, random
-        from playwright.async_api import async_playwright, TimeoutError as PWTimeout
+        progress_lock = asyncio.Lock()
+        completed = 0
 
-        os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", settings.PLAYWRIGHT_BROWSERS_PATH)
+        async def _process_one_ad(url: str) -> dict:
+            nonlocal completed
 
-        async with async_playwright() as pw:
-            browser = await pw.chromium.launch(**scraper._launch_opts())
-            ctx     = await browser.new_context(**scraper._ctx_opts())
-            await scraper._install_request_blocking(ctx)
+            # -- Extract --
+            data = await scraper.scrape_ad(report_id, url)
 
-            for i, url in enumerate(links):
-                logger.info("[task] %s scraping ad %d/%d: %s", report_id, i + 1, total, url)
+            # -- Analyze --
+            try:
+                if is_templated:
+                    analysis = await ai_client.analyze_ad_templated(data, ad_prompt, report_id)
+                else:
+                    analysis = await ai_client.analyze_ad(data, ad_prompt, report_id)
+            except Exception as exc:
+                analysis = f"AI ERROR: {exc}"
+                logger.warning("[task] ad analysis failed: %s", exc)
 
-                # -- Extract --
-                data = await scraper._extract_one(url, ctx, PWTimeout)
-
-                # -- Analyze --
-                logger.debug("[task] %s analyzing ad %d/%d", report_id, i + 1, total)
-                try:
-                    if is_templated:
-                        analysis = await ai_client.analyze_ad_templated(data, ad_prompt)
-                    else:
-                        analysis = await ai_client.analyze_ad(data, ad_prompt)
-                except Exception as exc:
-                    analysis = f"AI ERROR: {exc}"
-                    logger.warning("[task] ad analysis failed: %s", exc)
-
-                results.append({
-                    "url":      url,
-                    "data":     data,
-                    "analysis": analysis,
-                })
-
-                # Update progress counter (scraped + analyzed = one unit)
+            # Serialize the increment + DB write so progress is always
+            # written in increasing order even though ads finish out of order.
+            async with progress_lock:
+                completed += 1
                 async with async_session() as db:
-                    await crud.update_report(db, report_id, ads_analyzed=i + 1)
+                    await crud.update_report(db, report_id, ads_analyzed=completed)
+            logger.info("[task] %s ad %d/%d done: %s", report_id, completed, total, url)
 
-                # Throttle between ads (keep original inter-ad delay)
-                jitter = random.uniform(0.3, 1.0)
-                await asyncio.sleep(scraper._AD_BETWEEN_DELAY + jitter)
+            return {"url": url, "data": data, "analysis": analysis}
 
-            await browser.close()
+        results: list[dict] = await asyncio.gather(*[_process_one_ad(u) for u in links])
 
         # ── 5. AI summary ──────────────────────────────────────────────────────
         logger.info("[task] %s generating summary", report_id)
         try:
             if is_templated:
-                summary_text = await ai_client.analyze_summary_templated(results, summary_prompt)
+                summary_text = await ai_client.analyze_summary_templated(results, summary_prompt, report_id)
             else:
-                summary_text = await ai_client.analyze_summary(results, summary_prompt)
+                summary_text = await ai_client.analyze_summary(results, summary_prompt, report_id)
         except Exception as exc:
             summary_text = json.dumps({"market_summary": f"Summary failed: {exc}",
                                        "price_range": "", "average_price": "", "recommendation": ""})

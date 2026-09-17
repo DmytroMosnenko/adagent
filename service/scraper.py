@@ -22,6 +22,7 @@ from datetime import datetime
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
 from .config import settings
+from .broker_client import BrokerGateClient
 from .logger import get_logger
 
 logger = get_logger(__name__)
@@ -413,6 +414,142 @@ def _launch_opts() -> dict:
     return opts
 
 
+# ── Shared browser + context pool ───────────────────────────────────────────────
+#
+# One Chromium process per worker, kept alive for the process lifetime, with a
+# pool of pre-warmed contexts sized to match scrape_gate's capacity. This
+# replaces the old "launch a fresh browser per report" approach, which wasted
+# RAM launching N Chromium processes when only `capacity` of them could ever
+# be scraping at once anyway (bounded by the proxy plan limit).
+#
+# Contexts are generic and reused across different reports (same pattern as
+# spotter_server.py's ContextPool) — safe here because scraping public
+# listing/ad pages needs no per-report session isolation.
+
+# ── Shared browser + context pool ───────────────────────────────────────────────
+#
+# One Chromium process per worker, kept alive for the process lifetime. The
+# context pool creates contexts lazily, on demand, up to a safety cap of
+# SCRAPER_MAX_CONCURRENT_TOTAL — not divided by worker count. That's on
+# purpose: arbitration now happens in the standalone concurrency_broker.py
+# process (see broker_client.py), which can grant this worker anywhere from
+# 0 up to the *entire* global limit depending on where traffic actually
+# lands, so a per-worker pool sized to a fixed fraction could block this
+# worker on a local context even though the broker already gave it a slot.
+# Growing lazily (instead of pre-warming the full cap on every worker up
+# front) keeps idle RAM low in the common case where load is balanced.
+#
+# Contexts are generic and reused across different reports (same pattern as
+# spotter_server.py's ContextPool) — safe here because scraping public
+# listing/ad pages needs no per-report session isolation.
+
+class ContextPool:
+    def __init__(self, max_size: int, create_ctx):
+        self._max_size = max_size
+        self._create_ctx = create_ctx  # async callable() -> playwright context
+        self._queue: asyncio.Queue = asyncio.Queue()
+        self._created = 0
+        self._create_lock = asyncio.Lock()
+        self._in_use = set()
+        self._in_use_lock = asyncio.Lock()
+
+    async def acquire(self):
+        # Reuse an idle context if one's sitting in the queue...
+        if not self._queue.empty():
+            ctx = self._queue.get_nowait()
+        else:
+            # ...otherwise create a new one, up to the safety cap...
+            async with self._create_lock:
+                if self._created < self._max_size:
+                    ctx = await self._create_ctx()
+                    self._created += 1
+                else:
+                    ctx = None
+            # ...or, at the cap, wait for one to be released.
+            if ctx is None:
+                ctx = await self._queue.get()
+
+        async with self._in_use_lock:
+            self._in_use.add(id(ctx))
+        return ctx
+
+    async def release(self, ctx) -> None:
+        async with self._in_use_lock:
+            if id(ctx) not in self._in_use:
+                logger.warning("[scraper] context pool: release() for unknown ctx %s", id(ctx))
+                return
+            self._in_use.discard(id(ctx))
+        await self._queue.put(ctx)
+
+    def in_use_count(self) -> int:
+        return len(self._in_use)
+
+    def created_count(self) -> int:
+        return self._created
+
+    def idle_count(self) -> int:
+        return self._queue.qsize()
+
+
+_playwright = None
+browser = None  # type: ignore[assignment]  # playwright.async_api.Browser, set in startup_browser_pool()
+context_pool: "ContextPool | None" = None
+
+# Talks to the standalone concurrency_broker.py process over a Unix socket —
+# see broker_client.py and concurrency_broker.py. This replaces the old
+# in-process FairGate: SCRAPER_MAX_CONCURRENT_TOTAL is now a true global
+# total, arbitrated once for the whole deployment, not split per worker.
+scrape_gate = BrokerGateClient("scraper", settings.CONCURRENCY_BROKER_SOCKET)
+
+
+async def startup_browser_pool() -> None:
+    """
+    Launch this worker's Chromium instance and set up its (initially empty,
+    lazily-filled) context pool. Call once from the app's lifespan startup.
+    """
+    global _playwright, browser, context_pool
+
+    from playwright.async_api import async_playwright
+
+    os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", settings.PLAYWRIGHT_BROWSERS_PATH)
+    logger.info(
+        "[scraper] launching browser (context pool cap: %d)...",
+        settings.SCRAPER_MAX_CONCURRENT_TOTAL,
+    )
+
+    _playwright = await async_playwright().start()
+    browser = await _playwright.chromium.launch(**_launch_opts())
+
+    async def _create_ctx():
+        ctx = await browser.new_context(**_ctx_opts())
+        await _install_request_blocking(ctx)
+        return ctx
+
+    context_pool = ContextPool(settings.SCRAPER_MAX_CONCURRENT_TOTAL, _create_ctx)
+    logger.info("[scraper] browser ready")
+
+
+async def shutdown_browser_pool() -> None:
+    """Close the browser (and all its contexts). Call once on app shutdown."""
+    global _playwright, browser, context_pool
+
+    if browser:
+        try:
+            await browser.close()
+        except Exception as exc:
+            logger.warning("[scraper] browser close failed (already closed?): %s", exc)
+        browser = None
+
+    if _playwright:
+        try:
+            await _playwright.stop()
+        except Exception as exc:
+            logger.warning("[scraper] playwright stop failed: %s", exc)
+        _playwright = None
+
+    context_pool = None
+
+
 # ── Shared page helpers ────────────────────────────────────────────────────────
 
 async def _dismiss_consent(page) -> None:
@@ -670,10 +807,15 @@ async def _get_full_page_text(page) -> str:
 
 # ── Public API ─────────────────────────────────────────────────────────────────
 
-async def collect_all_links(filter_url: str) -> tuple[list[str], str]:
+async def collect_all_links(filter_url: str, report_id: str) -> tuple[list[str], str]:
     """
     Crawl all listing pages and return (unique ad URLs, diagnosis). The
     caller is responsible for applying the freemium limit.
+
+    report_id is used as the owner_id for scrape_gate — the whole multi-page
+    crawl (including retries) runs as a single unit of work for this report,
+    fairly sharing the global proxy-concurrency slot pool with every other
+    report's link-collection and per-ad scraping happening at the same time.
 
     diagnosis is one of:
       - "ok"              — links is non-empty, real results were found.
@@ -700,7 +842,9 @@ async def collect_all_links(filter_url: str) -> tuple[list[str], str]:
     last_diagnosis = "unknown"
 
     for attempt in range(_LISTING_MAX_RETRIES + 1):
-        links, diagnosis = await _collect_all_links_once(filter_url)
+        links, diagnosis = await scrape_gate.run(
+            report_id, lambda: _collect_all_links_once(filter_url)
+        )
 
         if links:
             return links, "ok"
@@ -738,9 +882,6 @@ async def _collect_all_links_once(filter_url: str) -> tuple[list[str], str]:
       3. Fall back to incrementing ?page=N in the URL (Otomoto/Otodom).
       4. Stop when a page yields zero new links (safe for both strategies).
     """
-    from playwright.async_api import async_playwright
-
-    os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", settings.PLAYWRIGHT_BROWSERS_PATH)
     logger.info("[scraper] starting link collection: %s", filter_url)
 
     # Collect links as a set to deduplicate promoted ads that appear on
@@ -749,10 +890,11 @@ async def _collect_all_links_once(filter_url: str) -> tuple[list[str], str]:
     links: list[str] = []
     diagnosis = ""
 
-    async with async_playwright() as pw:
-        browser = await pw.chromium.launch(**_launch_opts())
-        ctx     = await browser.new_context(**_ctx_opts())
-        await _install_request_blocking(ctx)
+    # Checked out from the shared pool — this crawl already holds a
+    # scrape_gate slot (see collect_all_links), so a context is guaranteed
+    # to be immediately available (pool size == gate capacity).
+    ctx = await context_pool.acquire()
+    try:
         page    = await ctx.new_page()
         current = filter_url
         page_n  = 0
@@ -874,7 +1016,9 @@ async def _collect_all_links_once(filter_url: str) -> tuple[list[str], str]:
             current = nxt
             await asyncio.sleep(_PAGE_BETWEEN_DELAY)
 
-        await browser.close()
+        await page.close()
+    finally:
+        await context_pool.release(ctx)
 
     logger.info("[scraper] collected %d unique ad links total", len(links))
     return links, diagnosis
@@ -882,6 +1026,11 @@ async def _collect_all_links_once(filter_url: str) -> tuple[list[str], str]:
 
 async def extract_ads(links: list[str]) -> list[dict]:
     """
+    LEGACY / unused by the app — superseded by scrape_ad(), which routes
+    each ad through the shared browser pool + scrape_gate instead of
+    launching its own browser. Kept only for reference; do not call this in
+    new code, it launches a throwaway browser outside the pool/gate.
+
     Open each ad URL, wait for JS content, extract structured fields.
     Retries on HTTP 403 / timeout with exponential back-off + jitter.
     Returns list of {url, data} dicts (never raises).
@@ -1036,3 +1185,33 @@ async def _extract_one(url: str, ctx, PWTimeout) -> dict:
                 except Exception: pass
 
     return {"url": url, "error": "All retries exhausted"}
+
+
+async def scrape_ad(report_id: str, url: str) -> dict:
+    """
+    Scrape a single ad, fairly sharing the global proxy-concurrency budget
+    with every other report's ad scraping and link collection currently in
+    flight (see scrape_gate / context_pool).
+
+    Replaces the old pattern of one browser+context per report processing
+    ads in a sequential loop: callers now launch one scrape_ad() task per
+    ad (e.g. via asyncio.gather) and scrape_gate handles both the global
+    concurrency cap and fair round-robin ordering between reports.
+    """
+    from playwright.async_api import TimeoutError as PWTimeout
+
+    async def _do() -> dict:
+        ctx = await context_pool.acquire()
+        try:
+            data = await _extract_one(url, ctx, PWTimeout)
+            # Same pacing the old sequential loop applied between ads, now
+            # applied per-lane: each of scrape_gate's `capacity` concurrent
+            # lanes paces itself like the old single lane did, instead of
+            # all lanes bursting requests with no delay between them.
+            jitter = random.uniform(0.3, 1.0)
+            await asyncio.sleep(_AD_BETWEEN_DELAY + jitter)
+            return data
+        finally:
+            await context_pool.release(ctx)
+
+    return await scrape_gate.run(report_id, _do)

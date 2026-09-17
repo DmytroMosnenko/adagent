@@ -27,7 +27,7 @@ from service.logger import get_logger, setup_root_logging
 
 # Apply unified log formatting before any third-party loggers are configured
 setup_root_logging()
-from service import crud, auth, email_client, stripe_client
+from service import crud, auth, email_client, stripe_client, scraper
 from service.tasks import run_analysis
 
 logger = get_logger(__name__)
@@ -37,8 +37,12 @@ async def lifespan(app: FastAPI):
     Path(settings.REPORT_STORAGE_PATH).mkdir(parents=True, exist_ok=True)
     async with async_session() as db:
         await crud.fail_stale_reports(db)
+    # One Chromium instance + context pool per worker process, kept alive for
+    # the process lifetime — see scraper.py's ContextPool / scrape_gate.
+    await scraper.startup_browser_pool()
     logger.info("AdAgent %s started", settings.APP_VERSION)
     yield
+    await scraper.shutdown_browser_pool()
 
 app = FastAPI(title="AdAgent", version=settings.APP_VERSION,
               docs_url=None, redoc_url=None, lifespan=lifespan)

@@ -127,6 +127,7 @@ class Report(Base):
                                    server_default=text("1"))         # True = free tier (5 ads)
     notify_email          = Column(Boolean, nullable=False, default=False,
                                    server_default=text("0"))         # email user on done/failed (logged-in only)
+    report_language       = Column(String(8), nullable=True)         # e.g. "pl" — None = model's default (ad's own language)
     report_path           = Column(String(512), nullable=True)       # path to .html (preset)
     result_json           = Column(Text, nullable=True)              # raw JSON (custom prompts)
     created_at            = Column(DateTime, server_default=text("CURRENT_TIMESTAMP"))

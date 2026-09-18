@@ -60,6 +60,7 @@ async def favicon():
 
 # ── Preset definitions (for the UI) ───────────────────────────────────────────
 from service.prompts_registry import PRESETS
+from service.languages import LANGUAGES, language_options, detect_language, DEFAULT_LANGUAGE
 
 
 # ── Startup ────────────────────────────────────────────────────────────────────
@@ -68,7 +69,8 @@ from service.prompts_registry import PRESETS
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
 def _tpl(name: str, request: Request, extra: dict | None = None):
-    ctx = {"request": request, "presets": PRESETS, "settings": settings}
+    ctx = {"request": request, "presets": PRESETS, "settings": settings,
+           "languages": language_options()}
     ctx.update(extra or {})
     return templates.TemplateResponse(request=request, name=name, context=ctx)
 
@@ -98,8 +100,10 @@ async def index(
     error: Optional[str] = None,
 ):
     user, subscribed = await _resolve_user_and_sub(adagent_session, db)
+    default_language = detect_language(request.headers.get("accept-language"))
     return _tpl("index.html", request, {
         "user": user, "subscribed": subscribed, "error": error,
+        "default_language": default_language,
     })
 
 
@@ -115,6 +119,7 @@ async def analyze(
     prompt_preset: Optional[str] = Form(default=None),
     custom_ad_prompt: Optional[str] = Form(default=None),
     custom_summary_prompt: Optional[str] = Form(default=None),
+    report_language: Optional[str] = Form(default=None),
 ):
     # Validate URL
     allowed_hosts = ("olx.pl", "otomoto.pl", "otodom.pl")
@@ -125,6 +130,10 @@ async def analyze(
     # Validate preset
     if prompt_preset and prompt_preset not in PRESETS:
         prompt_preset = None
+
+    # Validate language — fall back to default rather than rejecting the whole form
+    if report_language not in LANGUAGES:
+        report_language = DEFAULT_LANGUAGE
 
     # Custom prompt requires both fields
     if not prompt_preset:
@@ -144,6 +153,7 @@ async def analyze(
         prompt_preset=prompt_preset,
         custom_ad_prompt=custom_ad_prompt if not prompt_preset else None,
         custom_summary_prompt=custom_summary_prompt if not prompt_preset else None,
+        report_language=report_language,
         is_limited=not subscribed,
         status="pending",
     )

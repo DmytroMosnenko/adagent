@@ -59,6 +59,19 @@
         </div>
       </div>
 
+      <!-- Report language -->
+      <div class="form-group">
+        <label class="form-label" for="report_language">Report language</label>
+        <select class="form-input" id="report_language" name="report_language">
+          {% for lang in languages %}
+          <option value="{{ lang.code }}" {% if lang.code == default_language %}selected{% endif %}>
+            {{ lang.label }}
+          </option>
+          {% endfor %}
+        </select>
+        <p class="form-hint">AI analysis and summary will be written in this language.</p>
+      </div>
+
       <!-- Freemium note -->
       {% if not subscribed %}
       <div class="alert alert-info" style="margin-bottom:18px">

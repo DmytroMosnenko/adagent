@@ -12,6 +12,7 @@ from .config import settings
 from .db import async_session
 from . import crud, scraper, ai_client, report_builder, email_client
 from .prompts_registry import PRESETS
+from .languages import build_language_instruction
 from .logger import get_logger
 
 logger = get_logger(__name__)
@@ -128,6 +129,11 @@ async def run_analysis(report_id: str) -> None:
         preset_meta   = PRESETS.get(report.prompt_preset, {})
         is_structured = preset_meta.get("output", "raw") == "structured"
         is_templated  = preset_meta.get("templated", False)
+
+        lang_instruction = build_language_instruction(report.report_language, is_structured)
+        if lang_instruction:
+            ad_prompt      += lang_instruction
+            summary_prompt += lang_instruction
 
         # ── 3+4. Extract content + AI-analyze all ads concurrently ────────────
         # Each ad is its own task: scrape (via scraper.scrape_ad, gated by the

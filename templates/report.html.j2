@@ -124,6 +124,11 @@ a{color:var(--blue)}
 .recommendation{margin-top:14px;font-size:0.88rem;font-weight:600;color:#1e3a5f;
                 font-style:normal;background:var(--blue-bg);border:1px solid #bfdbfe;
                 border-radius:8px;padding:11px 14px;display:flex;gap:8px;align-items:flex-start}
+.recommendation a.rec-inline-link{color:inherit;font-weight:800;text-decoration:underline;
+          text-decoration-style:dotted;text-decoration-color:#5b7ba8;text-underline-offset:3px;
+          cursor:pointer;transition:color .2s}
+.recommendation a.rec-inline-link:hover{color:var(--blue)}
+.rec-inline-arrow{font-weight:400;font-size:0.82em}
 
 /* Ad cards */
 .ads-section{display:flex;flex-direction:column;gap:14px}
@@ -301,7 +306,9 @@ details.raw.deep-dive>summary:hover{background:#e1ecf9;color:var(--navy)}
       {% if average_price_m2 %}<div><div class="stat-label">Avg. per m²</div><div class="stat-value">{{ average_price_m2 }}</div></div>{% endif %}
       <div><div class="stat-label">Ads analyzed</div><div class="stat-value">{{ total_ads }}</div></div>
     </div>
-    {% if recommendation %}<p class="recommendation"><span>💡</span><span>{{ recommendation }}</span></p>{% endif %}
+    {% if recommendation %}
+    <p class="recommendation"><span>💡</span><span>{{ recommendation }}</span></p>
+    {% endif %}
   </div>
 </section>
 {% endif %}
@@ -407,7 +414,7 @@ details.raw.deep-dive>summary:hover{background:#e1ecf9;color:var(--navy)}
   const btn=document.getElementById('float-btn');
   const lbl=document.getElementById('float-label');
   let lastLbId=null;
-  document.querySelectorAll('.lb-jump').forEach(function(a){
+  document.querySelectorAll('.lb-jump, .rec-inline-link').forEach(function(a){
     a.addEventListener('click',function(){lastLbId=a.getAttribute('data-lb-id');lbl.textContent='Leaderboard';});
   });
   btn.addEventListener('click',function(){

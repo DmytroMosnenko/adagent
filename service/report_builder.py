@@ -1,8 +1,7 @@
 from __future__ import annotations
-import re
 from datetime import datetime
-from pathlib import Path
 from typing import Optional
+from markupsafe import Markup, escape
 from .ai_client import parse_json_safe
 from .logger import get_logger
 
@@ -74,8 +73,112 @@ def _fallback_analysis(raw: str) -> dict:
 def _fallback_summary() -> dict:
     return {
         "market_summary": "", "price_range": "", "average_price": "",
-        "average_price_m2": None, "recommendation": "",
+        "average_price_m2": None, "recommendation": "", "recommended_ads": [],
     }
+
+
+def _norm_url(url: str) -> str:
+    """Normalize a URL for equality checks (dedup + recommendation matching)."""
+    return (url or "").split("?")[0].rstrip("/")
+
+
+def _build_recommended_links(recommended_ads: list, ads: list[dict], limit: int = 3) -> list[dict]:
+    """
+    Match the AI's {label, url} pairs against the final deduped + rating-sorted
+    `ads` list, so links always point at an ad's real, currently-displayed rank
+    — never a stale number from before sorting. `label` must be the literal
+    substring used in the recommendation prose, so _linkify_recommendation can
+    find and wrap it; entries with no matching ad or empty label are dropped.
+    """
+    by_url = {_norm_url(ad["url"]): (i, ad) for i, ad in enumerate(ads)}
+    links, seen = [], set()
+    for item in (recommended_ads or []):
+        if not isinstance(item, dict):
+            continue
+        label = (item.get("label") or "").strip()
+        key = _norm_url(item.get("url") if isinstance(item.get("url"), str) else "")
+        match = by_url.get(key)
+        if not label or not match or key in seen:
+            continue
+        seen.add(key)
+        idx, ad = match
+        links.append({
+            "ad_anchor": f"ad-{idx}", "lb_anchor": f"lb-{idx}",
+            "rank": idx + 1, "title": ad["title"], "label": label,
+        })
+        if len(links) >= limit:
+            break
+    return links
+
+
+def _title_candidates(ad: dict) -> list[str]:
+    """
+    Candidate substrings to look for in the recommendation text when an ad has
+    no explicit {label, url} entry from the AI — most specific first. Uses the
+    AI-extracted make/model rather than the raw scraped title, since the prose
+    tends to say "Nissan Maxima", not the full messy ad headline.
+    """
+    make, model = ad.get("make", ""), ad.get("model", "")
+    candidates = []
+    if make and model:
+        candidates.append(f"{make} {model}")
+        first_word = model.split()[0] if model.split() else ""
+        if first_word and first_word != model:
+            candidates.append(f"{make} {first_word}")
+    elif model:
+        candidates.append(model)
+    return candidates
+
+
+def _linkify_recommendation(recommendation: str, recommended_links: list[dict], ads: list[dict]) -> Markup:
+    """
+    Turn the literal mention of each recommended ad inside the recommendation
+    prose into an inline jump-link, instead of a separate row of buttons.
+    Escapes the whole text first (untrusted AI output), then wraps the first
+    verbatim occurrence of each label — longest labels first, so a short label
+    can't accidentally match inside a longer one. A label that isn't found
+    verbatim (the model paraphrased instead of copying it) is silently skipped
+    rather than producing a broken or misplaced link.
+
+    The AI sometimes names an ad in the prose but forgets to give it an entry
+    in recommended_ads (seen in practice: 2 of 3 named ads get links, one
+    doesn't). As a fallback, any ad NOT already linked is also checked against
+    the leftover text using its own make/model — so a forgotten entry still
+    ends up clickable rather than silently dead text.
+    """
+    text = str(escape(recommendation or ""))
+    linked_anchors: set[str] = set()
+
+    for link in sorted(recommended_links, key=lambda l: -len(l["label"])):
+        esc_label = str(escape(link["label"]))
+        if not esc_label or esc_label not in text:
+            continue
+        anchor = (
+            f'<a href="#{link["ad_anchor"]}" class="rec-inline-link" '
+            f'data-lb-id="{link["lb_anchor"]}" title="Jump to ad #{link["rank"]}">'
+            f'{esc_label}<span class="rec-inline-arrow"> ↓</span></a>'
+        )
+        text = text.replace(esc_label, anchor, 1)
+        linked_anchors.add(link["ad_anchor"])
+
+    for idx, ad in enumerate(ads):
+        ad_anchor = f"ad-{idx}"
+        if ad_anchor in linked_anchors:
+            continue
+        for candidate in _title_candidates(ad):
+            esc_c = str(escape(candidate))
+            if esc_c and esc_c in text:
+                lb_anchor = f"lb-{idx}"
+                anchor = (
+                    f'<a href="#{ad_anchor}" class="rec-inline-link" '
+                    f'data-lb-id="{lb_anchor}" title="Jump to ad #{idx + 1}">'
+                    f'{esc_c}<span class="rec-inline-arrow"> ↓</span></a>'
+                )
+                text = text.replace(esc_c, anchor, 1)
+                linked_anchors.add(ad_anchor)
+                break
+
+    return Markup(text)
 
 
 
@@ -153,6 +256,8 @@ def _prepare_ad(result: dict) -> dict:
         "url":                    url,
         "site_label":             _site_label(url),
         "title":                  title,
+        "make":                   (specs.get("make") or "").strip(),
+        "model":                  (specs.get("model") or "").strip(),
         "rating":                 rating,
         "rating_pct":             rating * 10,
         "rating_color":           _rating_color(rating),
@@ -212,13 +317,15 @@ def build_html_report(
     seen: set[str] = set()
     unique: list[dict] = []
     for r in results:
-        key = r.get("url", "").split("?")[0].rstrip("/")
+        key = _norm_url(r.get("url", ""))
         if key and key not in seen:
             seen.add(key)
             unique.append(r)
 
     ads = [_prepare_ad(r) for r in unique]
     ads.sort(key=lambda a: a["rating"], reverse=True)
+
+    recommended_links = _build_recommended_links(summary.get("recommended_ads"), ads)
 
     env = Environment(loader=FileSystemLoader(template_dir), autoescape=True)
     env.filters["thousands"] = lambda v: f"{int(v):,}" if v else ""
@@ -238,6 +345,6 @@ def build_html_report(
         "price_range":    summary.get("price_range", ""),
         "average_price":  summary.get("average_price", ""),
         "average_price_m2": summary.get("average_price_m2", ""),
-        "recommendation": summary.get("recommendation", ""),
+        "recommendation": _linkify_recommendation(summary.get("recommendation", ""), recommended_links, ads),
     }
     return env.get_template(template_file).render(**ctx)

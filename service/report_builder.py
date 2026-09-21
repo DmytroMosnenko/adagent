@@ -5,6 +5,7 @@ from markupsafe import Markup, escape
 from .ai_client import parse_json_safe
 from .logger import get_logger
 
+from .config import settings
 logger = get_logger(__name__)
 
 _VERDICT_LABELS = {
@@ -332,7 +333,7 @@ def build_html_report(
 
     ctx = {
         "report_id":      report_id,
-        "adagent_url":    "https://adagent.dimosense.com",  # will be overridden by config at runtime
+        "adagent_url":    settings.APP_BASE_URL,
         "subscribe_url":  "/subscribe",
         "filter_url":     filter_url,
         "filter_site":    _site_label(filter_url),

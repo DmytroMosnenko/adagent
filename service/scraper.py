@@ -245,6 +245,28 @@ def _next_page_by_url(url: str) -> str:
     return urlunparse(parsed._replace(query=new_query))
 
 
+def _reset_to_first_page(url: str) -> str:
+    """
+    Strip any page=N query parameter from a user-submitted filter URL so
+    the crawl always starts at page 1.
+
+    Users often paste a filter URL while they're already browsing page 2,
+    3, etc. Pagination in this module only ever moves *forward* from the
+    starting URL (_next_page_by_url increments page=N; _next_page_by_number
+    only accepts numbers greater than the current one) — so without this,
+    a filter URL pasted from page 3 silently skips pages 1-2 forever.
+    """
+    parsed = urlparse(url)
+    params = parse_qs(parsed.query, keep_blank_values=True)
+    if "page" not in params:
+        return url
+    del params["page"]
+    new_query = urlencode({k: v[0] for k, v in params.items()})
+    reset = urlunparse(parsed._replace(query=new_query))
+    logger.info("[scraper] filter URL pointed past page 1 — reset to: %s", reset)
+    return reset
+
+
 async def _next_page_by_number(page, current_page: int, base: str, current: str) -> Optional[str]:
     """
     Find the next numbered OLX pagination link.
@@ -928,6 +950,7 @@ async def _collect_all_links_once(filter_url: str) -> tuple[list[str], str]:
       3. Fall back to incrementing ?page=N in the URL (Otomoto/Otodom).
       4. Stop when a page yields zero new links (safe for both strategies).
     """
+    filter_url = _reset_to_first_page(filter_url)
     logger.info("[scraper] starting link collection: %s", filter_url)
 
     # Collect links as a set to deduplicate promoted ads that appear on

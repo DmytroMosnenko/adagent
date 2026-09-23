@@ -1,4 +1,5 @@
 from __future__ import annotations
+import re
 from datetime import datetime
 from typing import Optional
 from markupsafe import Markup, escape
@@ -7,6 +8,9 @@ from .logger import get_logger
 
 from .config import settings
 logger = get_logger(__name__)
+
+_REF_PAIR_RE = re.compile(r"\{\{ref:([^}]*)\}\}(.*?)\{\{/ref\}\}", re.S)
+_REF_STRAY_RE = re.compile(r"\{\{/?ref[^}]*\}\}")
 
 _VERDICT_LABELS = {
     "worth_viewing": "Worth Viewing",
@@ -32,6 +36,20 @@ def _site_label(url: str) -> str:
     return "OLX"
 
 
+def _detect_category(specs: dict) -> str:
+    """
+    Which vertical this ad belongs to, based on which spec fields the AI
+    populated. Used by the template to pick the right deep_dive labels/icons
+    (vehicle vs real estate) without needing a separate field in the JSON
+    schema the AI has to fill in — specs already disambiguate this reliably.
+    """
+    if specs.get("property_type") or specs.get("area_m2") or specs.get("rooms"):
+        return "realestate"
+    if specs.get("make") or specs.get("model") or specs.get("mileage_km"):
+        return "vehicle"
+    return "other"
+
+
 def _build_spec_items(specs: dict) -> list[dict]:
     def add(label: str, val) -> Optional[dict]:
         if val is None or val == "":
@@ -51,13 +69,17 @@ def _build_spec_items(specs: dict) -> list[dict]:
         add("Color",    specs.get("color")),
         # Real estate
         add("Type",     specs.get("property_type", "").replace("_", " ").capitalize() if specs.get("property_type") else None),
+        add("Location", specs.get("district")),
         {"label": "Area", "value": f"{specs['area_m2']} m²"} if specs.get("area_m2") else None,
         add("Rooms",    specs.get("rooms")),
         add("Floor",    specs.get("floor")),
         add("Built",    specs.get("year_built")),
         add("Condition",specs.get("condition", "").replace("_", " ").capitalize() if specs.get("condition") else None),
         add("Heating",  specs.get("heating")),
+        {"label": "Elevator", "value": "Yes"} if specs.get("elevator") is True else
+        ({"label": "Elevator", "value": "No"} if specs.get("elevator") is False else None),
         add("Parking",  specs.get("parking", "").replace("_", " ").capitalize() if specs.get("parking") else None),
+        add("Monthly fees", specs.get("monthly_fees")),
     ]
     return [c for c in candidates if c]
 
@@ -112,12 +134,21 @@ def _build_recommended_links(recommended_ads: list, ads: list[dict], limit: int 
     return links
 
 
-def _title_candidates(ad: dict) -> list[str]:
+def _title_candidates(ad: dict, ambiguous_districts: set[str]) -> list[str]:
     """
     Candidate substrings to look for in the recommendation text when an ad has
-    no explicit {label, url} entry from the AI — most specific first. Uses the
-    AI-extracted make/model rather than the raw scraped title, since the prose
-    tends to say "Nissan Maxima", not the full messy ad headline.
+    no explicit {label, url} entry from the AI — most specific first.
+
+    Vehicles: uses the AI-extracted make/model rather than the raw scraped
+    title, since the prose tends to say "Nissan Maxima", not the full messy
+    ad headline.
+
+    Real estate: make/model are empty, so falls back to the AI-extracted
+    district. Unlike a car's make/model, a district is often shared by many
+    ads in the same batch (e.g. ten listings all in "Śródmieście") — linking
+    on an ambiguous district would point at an arbitrary one of them, so
+    `ambiguous_districts` (precomputed by the caller across the whole batch)
+    excludes any district string that isn't unique to this ad.
     """
     make, model = ad.get("make", ""), ad.get("model", "")
     candidates = []
@@ -128,58 +159,149 @@ def _title_candidates(ad: dict) -> list[str]:
             candidates.append(f"{make} {first_word}")
     elif model:
         candidates.append(model)
+
+    district = ad.get("district", "")
+    if district:
+        # a district often reads as "City, District" — try the more specific
+        # full form first, then just the neighborhood part
+        last_part = district.split(",")[-1].strip()
+        for candidate in (district, last_part):
+            if candidate and candidate not in ambiguous_districts and candidate not in candidates:
+                candidates.append(candidate)
+
     return candidates
 
 
-def _linkify_recommendation(recommendation: str, recommended_links: list[dict], ads: list[dict]) -> Markup:
+def _linkify_recommendation(recommendation: str, recommended_links: list[dict], ads: list[dict], results: list[dict]) -> Markup:
     """
-    Turn the literal mention of each recommended ad inside the recommendation
-    prose into an inline jump-link, instead of a separate row of buttons.
-    Escapes the whole text first (untrusted AI output), then wraps the first
-    verbatim occurrence of each label — longest labels first, so a short label
-    can't accidentally match inside a longer one. A label that isn't found
-    verbatim (the model paraphrased instead of copying it) is silently skipped
-    rather than producing a broken or misplaced link.
+    Turn each recommended ad's mention inside the recommendation prose into an
+    inline jump-link, instead of a separate row of buttons. Escapes the whole
+    text first (untrusted AI output), then resolves links in priority order
+    against that ORIGINAL escaped text — before building the final string in
+    one pass. Spans are never allowed to overlap: once a stretch of text is
+    claimed, a later match that falls inside it is skipped rather than
+    wrapped a second time (matching against text already mutated by an
+    earlier replacement used to nest anchors and stack up duplicate arrow
+    spans — this collect-then-splice-once approach can't do that).
 
-    The AI sometimes names an ad in the prose but forgets to give it an entry
-    in recommended_ads (seen in practice: 2 of 3 named ads get links, one
-    doesn't). As a fallback, any ad NOT already linked is also checked against
-    the leftover text using its own make/model — so a forgotten entry still
-    ends up clickable rather than silently dead text.
+    Three linking mechanisms, tried in order, each covering ads the previous
+    one missed:
+
+    1. {{ref:N}}...{{/ref}} marker pairs — the AI wraps its own descriptive
+       mention of a listing in these (see realestate_summary.txt), where N is
+       the ad's 1-indexed position in `results`, i.e. its "Ad #N" position in
+       the exact batch order the summary call was given. The wrapped text
+       becomes the visible, underlined link label (same look as the vehicle
+       recommended_ads links) and N resolves to a URL, not a text label, so
+       it can't be broken by translation, a different grammatical case, or an
+       ambiguous shared district — the failure modes that make free-text
+       label matching fundamentally unreliable once the report's language
+       differs from the ad's own language. A pair whose N doesn't resolve
+       (malformed, out of range, no matching ad) still keeps its wrapped text
+       visible, just unlinked — the marker tags are stripped either way, so
+       nothing like "{{ref:9}}" can ever leak into what the buyer reads.
+    2. Explicit {label, url} pairs from recommended_ads (vehicles; legacy
+       fallback for any other preset, harmless when the array is absent).
+       A label that isn't found verbatim (the model paraphrased instead of
+       copying it) is silently skipped.
+    3. Any ad still unlinked: checked against the leftover text using its own
+       make/model (vehicles) or district (real estate, only when unique in
+       this batch — a district shared by several ads can't safely be guessed,
+       so those are left unlinked rather than pointing at an arbitrary one).
+
+    The AI sometimes names an ad in the prose but forgets to wrap it / give it
+    a recommended_ads entry (seen in practice). Mechanisms 2 and 3 exist to
+    still catch that rather than leaving silently dead text.
     """
     text = str(escape(recommendation or ""))
+    if not text:
+        return Markup(text)
+
+    spans: list[tuple[int, int, str]] = []
     linked_anchors: set[str] = set()
 
-    for link in sorted(recommended_links, key=lambda l: -len(l["label"])):
-        esc_label = str(escape(link["label"]))
-        if not esc_label or esc_label not in text:
-            continue
+    def claim_span(start: int, end: int, replacement: str, ad_anchor: str | None) -> bool:
+        for s, e, _ in spans:
+            if start < e and s < end:    # overlaps a span already claimed
+                return False
+        spans.append((start, end, replacement))
+        if ad_anchor:
+            linked_anchors.add(ad_anchor)
+        return True
+
+    def claim_label(label: str, ad_anchor: str, lb_anchor: str, rank: int) -> bool:
+        esc_label = str(escape(label))
+        if not esc_label:
+            return False
+        idx = text.find(esc_label)
+        if idx == -1:
+            return False
         anchor = (
-            f'<a href="#{link["ad_anchor"]}" class="rec-inline-link" '
-            f'data-lb-id="{link["lb_anchor"]}" title="Jump to ad #{link["rank"]}">'
+            f'<a href="#{ad_anchor}" class="rec-inline-link" '
+            f'data-lb-id="{lb_anchor}" title="Jump to ad #{rank}">'
             f'{esc_label}<span class="rec-inline-arrow"> ↓</span></a>'
         )
-        text = text.replace(esc_label, anchor, 1)
-        linked_anchors.add(link["ad_anchor"])
+        return claim_span(idx, idx + len(esc_label), anchor, ad_anchor)
+
+    # 1. {{ref:N}}...{{/ref}} pairs. The wrapped text is kept either way (as
+    # a link when N resolves, as plain unwrapped text when it doesn't) — only
+    # the marker tags themselves are ever removed.
+    by_url = {_norm_url(ad["url"]): (i, ad) for i, ad in enumerate(ads)}
+    for m in _REF_PAIR_RE.finditer(text):
+        n_str, inner = m.group(1), _REF_STRAY_RE.sub("", m.group(2))
+        ad_anchor = None
+        replacement = inner  # default: unwrap, keep the text, drop the tags
+        if n_str.isdigit():
+            n = int(n_str)
+            if 1 <= n <= len(results):
+                match = by_url.get(_norm_url(results[n - 1].get("url", "")))
+                if match:
+                    idx, _ad = match
+                    ad_anchor = f"ad-{idx}"
+                    replacement = (
+                        f'<a href="#{ad_anchor}" class="rec-inline-link" '
+                        f'data-lb-id="lb-{idx}" title="Jump to ad #{idx + 1}">'
+                        f'{inner}<span class="rec-inline-arrow"> ↓</span></a>'
+                    )
+        claim_span(m.start(), m.end(), replacement, ad_anchor)
+
+    # 2. recommended_ads label matches.
+    for link in sorted(recommended_links, key=lambda l: -len(l["label"])):
+        if link["ad_anchor"] in linked_anchors:
+            continue
+        claim_label(link["label"], link["ad_anchor"], link["lb_anchor"], link["rank"])
+
+    # 3. make/model or (unique) district fallback.
+    # Districts shared by more than one ad in this batch can't be used to
+    # safely guess which ad a bare district mention refers to.
+    district_counts: dict[str, int] = {}
+    for ad in ads:
+        for d in {ad.get("district", ""), (ad.get("district", "") or "").split(",")[-1].strip()}:
+            if d:
+                district_counts[d] = district_counts.get(d, 0) + 1
+    ambiguous_districts = {d for d, n in district_counts.items() if n > 1}
 
     for idx, ad in enumerate(ads):
         ad_anchor = f"ad-{idx}"
         if ad_anchor in linked_anchors:
             continue
-        for candidate in _title_candidates(ad):
-            esc_c = str(escape(candidate))
-            if esc_c and esc_c in text:
-                lb_anchor = f"lb-{idx}"
-                anchor = (
-                    f'<a href="#{ad_anchor}" class="rec-inline-link" '
-                    f'data-lb-id="{lb_anchor}" title="Jump to ad #{idx + 1}">'
-                    f'{esc_c}<span class="rec-inline-arrow"> ↓</span></a>'
-                )
-                text = text.replace(esc_c, anchor, 1)
-                linked_anchors.add(ad_anchor)
+        for candidate in _title_candidates(ad, ambiguous_districts):
+            if claim_label(candidate, ad_anchor, f"lb-{idx}", idx + 1):
                 break
 
-    return Markup(text)
+    if not spans:
+        return Markup(_REF_STRAY_RE.sub("", text))
+
+    spans.sort(key=lambda s: s[0])
+    out, cursor = [], 0
+    for start, end, anchor in spans:
+        if start < cursor:
+            continue  # extra safety net; shouldn't happen given claim_span()'s check
+        out.append(_REF_STRAY_RE.sub("", text[cursor:start]))
+        out.append(anchor)
+        cursor = end
+    out.append(_REF_STRAY_RE.sub("", text[cursor:]))
+    return Markup("".join(out))
 
 
 
@@ -227,6 +349,8 @@ def _prepare_ad(result: dict) -> dict:
             title = specs["property_type"].replace("_", " ").capitalize()
             if specs.get("area_m2"):
                 title += f" {specs['area_m2']} m²"
+            if specs.get("district"):
+                title += f" — {specs['district']}"
         else:
             title = result.get("url", "Unknown ad")
     if len(title) > 90:
@@ -256,9 +380,11 @@ def _prepare_ad(result: dict) -> dict:
     return {
         "url":                    url,
         "site_label":             _site_label(url),
+        "category":               _detect_category(specs),
         "title":                  title,
         "make":                   (specs.get("make") or "").strip(),
         "model":                  (specs.get("model") or "").strip(),
+        "district":               (specs.get("district") or "").strip(),
         "rating":                 rating,
         "rating_pct":             rating * 10,
         "rating_color":           _rating_color(rating),
@@ -346,6 +472,6 @@ def build_html_report(
         "price_range":    summary.get("price_range", ""),
         "average_price":  summary.get("average_price", ""),
         "average_price_m2": summary.get("average_price_m2", ""),
-        "recommendation": _linkify_recommendation(summary.get("recommendation", ""), recommended_links, ads),
+        "recommendation": _linkify_recommendation(summary.get("recommendation", ""), recommended_links, ads, results),
     }
     return env.get_template(template_file).render(**ctx)

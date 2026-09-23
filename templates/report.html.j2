@@ -356,13 +356,19 @@ details.raw.deep-dive>summary:hover{background:#e1ecf9;color:var(--navy)}
     </div>
     {% endif %}
     {% if ad.deep_dive.general_specs or ad.deep_dive.mentioned_fixes or ad.deep_dive.known_weak_points or ad.deep_dive.real_world_consumption %}
+    {% set dd_icon = '🏘️' if ad.category == 'realestate' else '🔧' %}
+    {% set dd_title = 'Full location & building analysis' if ad.category == 'realestate' else 'Full model & reliability analysis' %}
+    {% set dd_l1 = 'Location profile' if ad.category == 'realestate' else 'General specs (official)' %}
+    {% set dd_l2 = 'Renovations / upgrades / included items mentioned' if ad.category == 'realestate' else 'All mentioned fixes / maintenance' %}
+    {% set dd_l3 = 'Known issues for this building type / era' if ad.category == 'realestate' else 'Known weak points for this model' %}
+    {% set dd_l4 = 'Running costs & market liquidity' if ad.category == 'realestate' else 'Real-world fuel consumption' %}
     <details class="raw deep-dive" open>
-      <summary>🔧 Full model &amp; reliability analysis</summary>
+      <summary>{{ dd_icon }} {{ dd_title }}</summary>
       <div class="raw-body">
-        {% if ad.deep_dive.general_specs %}<div class="raw-section"><div class="raw-section-label deep-dive-label">General specs (official)</div><p>{{ ad.deep_dive.general_specs }}</p></div>{% endif %}
-        {% if ad.deep_dive.mentioned_fixes %}<div class="raw-section"><div class="raw-section-label deep-dive-label">All mentioned fixes / maintenance</div><ul class="fixes-list">{% for f in ad.deep_dive.mentioned_fixes %}<li>{{ f }}</li>{% endfor %}</ul></div>{% endif %}
-        {% if ad.deep_dive.known_weak_points %}<div class="raw-section"><div class="raw-section-label deep-dive-label">Known weak points for this model</div><p>{{ ad.deep_dive.known_weak_points }}</p></div>{% endif %}
-        {% if ad.deep_dive.real_world_consumption %}<div class="raw-section"><div class="raw-section-label deep-dive-label">Real-world fuel consumption</div><p>{{ ad.deep_dive.real_world_consumption }}</p></div>{% endif %}
+        {% if ad.deep_dive.general_specs %}<div class="raw-section"><div class="raw-section-label deep-dive-label">{{ dd_l1 }}</div><p>{{ ad.deep_dive.general_specs }}</p></div>{% endif %}
+        {% if ad.deep_dive.mentioned_fixes %}<div class="raw-section"><div class="raw-section-label deep-dive-label">{{ dd_l2 }}</div><ul class="fixes-list">{% for f in ad.deep_dive.mentioned_fixes %}<li>{{ f }}</li>{% endfor %}</ul></div>{% endif %}
+        {% if ad.deep_dive.known_weak_points %}<div class="raw-section"><div class="raw-section-label deep-dive-label">{{ dd_l3 }}</div><p>{{ ad.deep_dive.known_weak_points }}</p></div>{% endif %}
+        {% if ad.deep_dive.real_world_consumption %}<div class="raw-section"><div class="raw-section-label deep-dive-label">{{ dd_l4 }}</div><p>{{ ad.deep_dive.real_world_consumption }}</p></div>{% endif %}
       </div>
     </details>
     {% endif %}

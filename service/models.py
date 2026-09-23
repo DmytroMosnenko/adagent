@@ -2,14 +2,14 @@ from datetime import datetime
 from sqlalchemy import (
     BINARY,
     Column, String, Integer, Boolean, DateTime, Text, Enum,
-    ForeignKey, Index, text,
+    ForeignKey, Index, text
 )
+from sqlalchemy.dialects.mysql import MEDIUMTEXT
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.ext.asyncio import AsyncAttrs
 
 
 import os
-import struct
 import time
 from sqlalchemy.types import TypeDecorator
 
@@ -129,7 +129,7 @@ class Report(Base):
                                    server_default=text("0"))         # email user on done/failed (logged-in only)
     report_language       = Column(String(8), nullable=True)         # e.g. "pl" — None = model's default (ad's own language)
     report_path           = Column(String(512), nullable=True)       # path to .html (preset)
-    result_json           = Column(Text, nullable=True)              # raw JSON (custom prompts)
+    result_json           = Column(MEDIUMTEXT, nullable=True)              # raw JSON (custom prompts)
     created_at            = Column(DateTime, server_default=text("CURRENT_TIMESTAMP"))
     finished_at           = Column(DateTime, nullable=True)
     error_message         = Column(Text, nullable=True)

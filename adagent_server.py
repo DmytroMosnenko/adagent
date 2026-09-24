@@ -5,7 +5,7 @@ Routes: web UI + Stripe webhooks + JSON status API
 from __future__ import annotations
 
 import json
-import uuid
+from datetime import datetime, timezone
 from service.models import generate_report_id
 from pathlib import Path
 from typing import Optional
@@ -70,7 +70,8 @@ from service.languages import LANGUAGES, language_options, detect_language, DEFA
 
 def _tpl(name: str, request: Request, extra: dict | None = None):
     ctx = {"request": request, "presets": PRESETS, "settings": settings,
-           "languages": language_options()}
+           "languages": language_options(),
+           "current_year": datetime.now(timezone.utc).year}
     ctx.update(extra or {})
     return templates.TemplateResponse(request=request, name=name, context=ctx)
 
@@ -105,6 +106,25 @@ async def index(
         "user": user, "subscribed": subscribed, "error": error,
         "default_language": default_language,
     })
+
+@app.get("/privacy", response_class=HTMLResponse)
+async def privacy_policy(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    adagent_session: Optional[str] = Cookie(default=None),
+):
+    user, subscribed = await _resolve_user_and_sub(adagent_session, db)
+    return _tpl("legal_privacy.html", request, {"user": user, "subscribed": subscribed})
+
+
+@app.get("/terms", response_class=HTMLResponse)
+async def terms_of_service(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    adagent_session: Optional[str] = Cookie(default=None),
+):
+    user, subscribed = await _resolve_user_and_sub(adagent_session, db)
+    return _tpl("legal_terms.html", request, {"user": user, "subscribed": subscribed})
 
 
 # ── Analyze form submit ────────────────────────────────────────────────────────

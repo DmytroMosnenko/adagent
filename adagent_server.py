@@ -434,7 +434,12 @@ async def auth_send(
     await crud.get_or_create_user(db, email)
     token = auth.generate_token()
     await crud.create_magic_link(db, token, email, settings.MAGIC_LINK_TTL_MINUTES)
-    await email_client.send_magic_link(email, token, _ui_lang(request))
+    if not await email_client.send_magic_link(email, token, _ui_lang(request)):
+        # Mail relay refused / unreachable (email_client already logged why).
+        # Don't show the "sent" screen — re-render the form with an error.
+        resp = _tpl("auth_request.html", request, {"send_failed": True})
+        resp.status_code = 503
+        return resp
     return RedirectResponse(f"/auth?sent={email}", status_code=303)
 
 

@@ -8,6 +8,12 @@
       {{ t("Enter your email and we'll send you a sign-in link. No password needed.") }}
     </p>
 
+    {% if send_failed %}
+    <div class="alert alert-error">
+      {{ t("We couldn't send the sign-in link right now. Please try again in a few minutes.") }}
+    </div>
+    {% endif %}
+
     {% if sent %}
     <div class="alert alert-success">
       ✅ {{ t("Sign-in link sent to") }} <strong>{{ sent }}</strong>.<br>

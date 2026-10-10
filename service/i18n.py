@@ -322,6 +322,7 @@ PL: dict[str, str] = {
     "Enter your email and we'll send you a sign-in link. No password needed.": "Podaj adres e-mail, a wyślemy Ci link do logowania. Hasło nie jest potrzebne.",
     "Sign-in link sent to": "Link do logowania wysłano na adres",
     "Check your inbox (and spam folder).": "Sprawdź skrzynkę odbiorczą (oraz folder spam).",
+    "We couldn't send the sign-in link right now. Please try again in a few minutes.": "Nie udało się teraz wysłać linku do logowania. Spróbuj ponownie za kilka minut.",
     "Email address": "Adres e-mail",
     "Send sign-in link →": "Wyślij link do logowania →",
     "Don't have an account? Just enter your email — one will be created automatically.": "Nie masz konta? Wystarczy, że podasz e-mail — konto utworzymy automatycznie.",

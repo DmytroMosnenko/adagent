@@ -72,6 +72,42 @@ class Settings(BaseSettings):
 
     # ── Freemium ───────────────────────────────────────────────────────────────
     FREE_ADS_LIMIT: int = 5
+    # Abuse / budget guard for anonymous & free users (paid traffic makes this matter).
+    # Counted per client (keyed hash of the IP, see adagent_server._client_hash) over
+    # a rolling 24 h. 0 disables a limit. Subscribers are never limited.
+    # Keep the per-client value generous: Polish mobile carriers put many users
+    # behind one IPv4 address (CGNAT).
+    FREE_REPORTS_PER_CLIENT_PER_DAY: int = 10
+    FREE_REPORTS_GLOBAL_PER_DAY: int = 100
+
+    # ── Price shown in the UI ──────────────────────────────────────────────────
+    # DISPLAY ONLY — what people are actually charged comes from the Stripe price.
+    # Set PRICE_LABEL_MONTHLY_PL together with STRIPE_CHECKOUT_CURRENCY_PL, and only
+    # after the Stripe price has a matching PLN entry in currency_options.
+    PRICE_LABEL_MONTHLY: str = "$9.99"
+    STRIPE_CHECKOUT_CURRENCY_USD: str = "USD"    # e.g. "usd" (forces USD for non Polish-UI checkouts)
+    PRICE_LABEL_MONTHLY_PL: str = "39,99 zł"     # e.g. "39,99 zł"
+    STRIPE_CHECKOUT_CURRENCY_PL: str = "PLN"     # e.g. "pln" (forces PLN for Polish-UI checkouts)
+    # Show an explicit "I accept the Terms / start immediately, losing withdrawal right"
+    # checkbox in Checkout. Requires the Terms URL to be set in the Stripe Dashboard
+    # (Settings → Public details) — Stripe rejects the session otherwise.
+    STRIPE_REQUIRE_TOS_CONSENT: bool = False
+    # Let business buyers enter a NIP / VAT ID in Checkout (for a faktura VAT).
+    STRIPE_COLLECT_TAX_ID: bool = False
+
+    # ── Google Ads / GA4 (all optional — nothing is rendered until an ID is set) ─
+    GOOGLE_ADS_ID: str = ""                       # "AW-1234567890"
+    GOOGLE_ADS_LABEL_PURCHASE: str = ""           # conversion label of the "Purchase" action
+    GOOGLE_ADS_LABEL_ANALYSIS_STARTED: str = ""   # conversion label of the "Analysis started" action
+    GA4_MEASUREMENT_ID: str = ""                  # "G-XXXXXXXXXX"
+    # False = gtag.js is loaded only after the visitor clicks "Accept" (Consent Mode "basic").
+    # True  = gtag.js loads immediately with all storage denied and sends cookieless pings
+    #         (Consent Mode "advanced": better conversion modelling, weaker privacy posture).
+    GOOGLE_CONSENT_ADVANCED: bool = False
+
+    # Optional link to a finished report that visitors can open as an example
+    # (generate one, then set e.g. https://adagent.dimosense.com/report/<id>).
+    SAMPLE_REPORT_URL: str = ""
 
     # ── Storage ────────────────────────────────────────────────────────────────
     REPORT_STORAGE_PATH: str = "/opt/adagent/report_storage"
@@ -121,6 +157,22 @@ class Settings(BaseSettings):
             f"mysql+pymysql://{self.DB_USER}:{self.DB_PASSWORD}"
             f"@{self.DB_HOST}/{self.DB_NAME}?charset={self.DB_CHARSET}"
         )
+
+    @property
+    def tracking_enabled(self) -> bool:
+        return bool(self.GOOGLE_ADS_ID or self.GA4_MEASUREMENT_ID)
+
+    @property
+    def google_ads_labels(self) -> dict[str, str]:
+        return {
+            "purchase": self.GOOGLE_ADS_LABEL_PURCHASE,
+            "analysis_started": self.GOOGLE_ADS_LABEL_ANALYSIS_STARTED,
+        }
+
+    def price_label(self, lang: str | None = None) -> str:
+        if lang == "pl" and self.PRICE_LABEL_MONTHLY_PL:
+            return self.PRICE_LABEL_MONTHLY_PL
+        return self.PRICE_LABEL_MONTHLY
 
     @property
     def stripe_prices(self) -> dict[str, str]:

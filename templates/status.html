@@ -1,45 +1,45 @@
 {% extends "base.html" %}
-{% block title %}Analyzing… — AdAgent{% endblock %}
+{% block title %}{{ t("Analyzing… — AdAgent") }}{% endblock %}
 
 {% block content %}
 <div class="container" style="max-width:540px">
   <div class="card">
     <div class="status-box">
       <div class="spinner"></div>
-      <h2 style="margin-top:20px;color:var(--navy)">Analyzing your search…</h2>
-      <p class="progress-text" id="status-msg">Starting up…</p>
+      <h2 style="margin-top:20px;color:var(--navy)">{{ t("Analyzing your search…") }}</h2>
+      <p class="progress-text" id="status-msg">{{ t("Starting up…") }}</p>
       <p class="progress-text" id="progress-detail" style="font-size:0.78rem;color:var(--muted);margin-top:4px"></p>
       <div class="progress-bar-wrap">
         <div class="progress-bar-fill" id="progress-bar" style="width:0%"></div>
       </div>
       <p style="margin-top:24px;font-size:0.8rem;color:var(--muted)">
-        This takes 5–10 minutes depending on the number of ads.<br>
-        You can safely close this tab — the analysis continues in the background.
+        {{ t("This takes 5–10 minutes depending on the number of ads.") }}<br>
+        {{ t("You can safely close this tab — the analysis continues in the background.") }}
       </p>
       <button type="button" id="go-to-report-btn" class="btn btn-green" style="display:none;margin-top:16px">
-        Open report →
+        {{ t("Open report →") }}
       </button>
 
       <div class="notify-options">
         <div class="notify-row{{ ' disabled tooltip-wrap' if not user else '' }}"
-             {% if not user %}data-tooltip="Sign in to get notified by email"{% endif %}>
+             {% if not user %}data-tooltip="{{ t('Sign in to get notified by email') }}"{% endif %}>
           <input type="checkbox" id="notify-email-cb"
                  {{ 'checked' if report.notify_email else '' }}
                  {{ 'disabled' if not user else '' }}>
-          <label for="notify-email-cb">✉️ Send notification on email when finished</label>
+          <label for="notify-email-cb">✉️ {{ t("Send notification on email when finished") }}</label>
         </div>
         <div class="notify-row" id="browser-notify-row">
           <input type="checkbox" id="notify-browser-cb">
-          <label for="notify-browser-cb">🔔 Notify me in this browser when finished</label>
+          <label for="notify-browser-cb">🔔 {{ t("Notify me in this browser when finished") }}</label>
         </div>
         <p id="notify-status" class="notify-status"></p>
       </div>
     </div>
 
     <div style="padding:0 20px 20px;text-align:center">
-      <p style="font-size:0.78rem;color:var(--muted)">Report ID: <code>{{ report.id }}</code></p>
+      <p style="font-size:0.78rem;color:var(--muted)">{{ t("Report ID:") }} <code>{{ report.id }}</code></p>
       <p style="font-size:0.78rem;color:var(--muted);margin-top:4px">
-        Bookmark this page to return later:
+        {{ t("Bookmark this page to return later:") }}
         <a href="/report/{{ report.id }}" style="word-break:break-all">
           adagent.dimosense.com/report/{{ report.id }}
         </a>
@@ -53,6 +53,15 @@ const REPORT_ID    = "{{ report.id }}";
 const IS_LIMITED   = {{ 'true' if report.is_limited else 'false' }};
 const IS_LOGGED_IN = {{ 'true' if user else 'false' }};
 const POLL_MS      = 3000;
+
+// ── "Analysis started" conversion (Google Ads / GA4) — once per report per browser ──
+try {
+  const k = "aa_started_" + REPORT_ID;
+  if (!localStorage.getItem(k)) {
+    localStorage.setItem(k, "1");
+    if (window.aaConversion) window.aaConversion("analysis_started", { transaction_id: REPORT_ID });
+  }
+} catch (_) { /* storage blocked — skip */ }
 
 const notifyStatusEl = document.getElementById("notify-status");
 function flashNotifyStatus(msg, isError) {
@@ -73,10 +82,10 @@ if (IS_LOGGED_IN) {
         body: JSON.stringify({ enabled }),
       });
       if (!r.ok) throw new Error("request failed");
-      flashNotifyStatus(enabled ? "We'll email you when it's done." : "Email notification turned off.", false);
+      flashNotifyStatus(enabled ? {{ t("We'll email you when it's done.")|tojson }} : {{ t("Email notification turned off.")|tojson }}, false);
     } catch (_) {
       emailCb.checked = !enabled; // revert on failure
-      flashNotifyStatus("Couldn't save that — try again.", true);
+      flashNotifyStatus({{ t("Couldn't save that — try again.")|tojson }}, true);
     }
   });
 }
@@ -91,7 +100,7 @@ if (!("Notification" in window)) {
   browserCb.disabled = true;
   const browserRow = document.getElementById("browser-notify-row");
   browserRow.classList.add("disabled", "tooltip-wrap");
-  browserRow.dataset.tooltip = "Not supported in this browser";
+  browserRow.dataset.tooltip = {{ t("Not supported in this browser")|tojson }};
 } else {
   browserNotifyArmed = Notification.permission === "granted" && browserCb.checked;
   browserCb.addEventListener("change", async () => {
@@ -106,11 +115,11 @@ if (!("Notification" in window)) {
     const perm = await Notification.requestPermission();
     if (perm === "granted") {
       browserNotifyArmed = true;
-      flashNotifyStatus("Browser notifications enabled.", false);
+      flashNotifyStatus({{ t("Browser notifications enabled.")|tojson }}, false);
     } else {
       browserCb.checked = false;
       browserNotifyArmed = false;
-      flashNotifyStatus("Notifications blocked — check your browser's site settings.", true);
+      flashNotifyStatus({{ t("Notifications blocked — check your browser's site settings.")|tojson }}, true);
     }
   });
 }
@@ -122,11 +131,11 @@ function fireNotification(status) {
   if (!browserNotifyArmed) return;
   try {
     const n = new Notification(
-      status === "failed" ? "AdAgent — analysis failed" : "AdAgent — report ready",
+      status === "failed" ? {{ t("AdAgent — analysis failed")|tojson }} : {{ t("AdAgent — report ready")|tojson }},
       {
         body: status === "failed"
-          ? "Your ad analysis couldn't be completed."
-          : "Your ad analysis has finished.",
+          ? {{ t("Your ad analysis couldn't be completed.")|tojson }}
+          : {{ t("Your ad analysis has finished.")|tojson }},
         tag: "adagent-" + REPORT_ID,
       }
     );
@@ -142,9 +151,9 @@ function fireNotification(status) {
 function revealReportButton(status) {
   document.querySelector(".spinner").style.display = "none";
   document.getElementById("status-msg").textContent =
-    status === "failed" ? "Analysis failed." : "Analysis complete.";
+    status === "failed" ? {{ t("Analysis failed.")|tojson }} : {{ t("Analysis complete.")|tojson }};
   const btn = document.getElementById("go-to-report-btn");
-  btn.textContent = status === "failed" ? "View details →" : "Open report →";
+  btn.textContent = status === "failed" ? {{ t("View details →")|tojson }} : {{ t("Open report →")|tojson }};
   btn.style.display = "inline-block";
   btn.addEventListener("click", () => {
     window.location.href = `/report/${REPORT_ID}`;
@@ -173,7 +182,7 @@ function setFaviconHref(href) {
 // receiving) the OS notification.
 function setTabBadge(status) {
   const color = status === "failed" ? "#dc2626" : "#16a34a";
-  document.title = (status === "failed" ? "⚠️ Failed — " : "✅ Ready — ") + ORIGINAL_TITLE;
+  document.title = (status === "failed" ? {{ t("⚠️ Failed — ")|tojson }} : {{ t("✅ Ready — ")|tojson }}) + ORIGINAL_TITLE;
 
   const size = 32;
   const canvas = document.createElement("canvas");
@@ -226,20 +235,20 @@ async function poll() {
     const analyzed = data.ads_analyzed ?? 0;
     const status   = data.status;
 
-    let msg = "Collecting ad links…";
+    let msg = {{ t("Collecting ad links…")|tojson }};
     let pct = 5;
 
     if (status === "running") {
       if (found === 0) {
-        msg = "Collecting ad links from all pages…";
+        msg = {{ t("Collecting ad links from all pages…")|tojson }};
         pct = 10;
       } else {
         const total = IS_LIMITED ? Math.min(found, {{ settings.FREE_ADS_LIMIT }}) : found;
         if (analyzed === 0) {
-          msg = `Found ${found} ads. Starting analysis…`;
+          msg = {{ t("Found {found} ads. Starting analysis…")|tojson }}.replace("{found}", found);
           pct = 20;
         } else {
-          msg = `Scraping & analyzing ad ${analyzed} of ${total}…`;
+          msg = {{ t("Scraping & analyzing ad {analyzed} of {total}…")|tojson }}.replace("{analyzed}", analyzed).replace("{total}", total);
           pct = 20 + Math.round((analyzed / Math.max(total, 1)) * 70);
         }
       }
@@ -256,7 +265,7 @@ async function poll() {
     if (detail) {
       if (found > 0) {
         const total = IS_LIMITED ? Math.min(found, {{ settings.FREE_ADS_LIMIT }}) : found;
-        detail.textContent = `Ads found: ${found} · Processed: ${analyzed} / ${total}`;
+        detail.textContent = {{ t("Ads found: {found} · Processed: {analyzed} / {total}")|tojson }}.replace("{found}", found).replace("{analyzed}", analyzed).replace("{total}", total);
       } else {
         detail.textContent = "";
       }

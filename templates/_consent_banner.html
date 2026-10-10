@@ -1,0 +1,38 @@
+{% if settings.tracking_enabled %}
+<div id="aa-consent" class="consent-bar" role="dialog" aria-live="polite" aria-label="{{ t('Cookie consent') }}">
+
+  <p>{{ t("We use cookies to measure advertising and analytics only if you agree.") }}
+     <a href="/privacy#cookies">{{ t("Privacy Policy") }}</a></p>
+  <div class="consent-btns">
+    <button type="button" id="aa-consent-reject" class="btn btn-outline">{{ t("Reject") }}</button>
+    <button type="button" id="aa-consent-accept" class="btn btn-primary">{{ t("Accept") }}</button>
+  </div>
+</div>
+<script>
+(function () {
+  var bar = document.getElementById("aa-consent");
+  if (!bar || !window.aaConsent) return;
+  if (!window.aaConsent.state()) {
+    bar.style.display = "flex";
+  } else {
+    bar.style.display = "none";
+  }
+  document.getElementById("aa-consent-accept").addEventListener("click", function () {
+    console.log("accepted");
+    window.aaConsent.accept();
+    bar.style.display = "none";
+  });
+  document.getElementById("aa-consent-reject").addEventListener("click", function () {
+    console.log("rejected");
+    window.aaConsent.reject();
+    bar.style.display = "none";
+  });
+  var link = document.getElementById("aa-cookie-settings");
+  if (link) link.addEventListener("click", function (e) {
+    e.preventDefault();
+    window.aaConsent.reset();
+    bar.style.display = "flex";
+  });
+})();
+</script>
+{% endif %}

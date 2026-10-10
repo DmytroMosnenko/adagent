@@ -1,33 +1,34 @@
 {% extends "base.html" %}
-{% block title %}Error — AdAgent{% endblock %}
+{% block title %}{{ t("Error — AdAgent") }}{% endblock %}
 {% block content %}
 <div class="container" style="max-width:520px;padding-top:60px;text-align:center">
   <div class="card">
     {% if is_no_match %}
     <div style="font-size:2.5rem;margin-bottom:12px">🔍</div>
-    <h1 style="color:var(--navy);margin-bottom:12px">No matching ads</h1>
+    <h1 style="color:var(--navy);margin-bottom:12px">{{ t("No matching ads") }}</h1>
     {% else %}
     <div style="font-size:2.5rem;margin-bottom:12px">⚠️</div>
-    <h1 style="color:var(--navy);margin-bottom:12px">Analysis failed</h1>
+    <h1 style="color:var(--navy);margin-bottom:12px">{{ t("Analysis failed") }}</h1>
     {% endif %}
     <p style="color:var(--muted);font-size:0.9rem;margin-bottom:24px">
-      {{ message | default('Something went wrong during the analysis.') }}
+      {{ t(message | default('Something went wrong during the analysis.')) }}
     </p>
 
     {% if report and report.filter_url and not is_no_match %}
     <form action="/analyze" method="post" style="margin-bottom:12px">
       <input type="hidden" name="filter_url" value="{{ report.filter_url }}">
+      <input type="hidden" name="report_language" value="{{ report.report_language or '' }}">
       {% if report.prompt_preset %}
       <input type="hidden" name="prompt_preset" value="{{ report.prompt_preset }}">
       {% else %}
       <input type="hidden" name="custom_ad_prompt" value="{{ report.custom_ad_prompt or '' }}">
       <input type="hidden" name="custom_summary_prompt" value="{{ report.custom_summary_prompt or '' }}">
       {% endif %}
-      <button type="submit" class="btn btn-primary btn-full">Found nothing — try again →</button>
+      <button type="submit" class="btn btn-primary btn-full">{{ t("Found nothing — try again →") }}</button>
     </form>
     {% endif %}
 
-    <a href="/" class="btn btn-outline">Start a new search</a>
+    <a href="/{{ 'pl' if ui_lang == 'pl' else '' }}" class="btn btn-outline">{{ t("Start a new search") }}</a>
   </div>
 </div>
 {% endblock %}

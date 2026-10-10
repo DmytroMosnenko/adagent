@@ -1,16 +1,17 @@
 {% extends "base.html" %}
-{% block title %}AdAgent Pro — Pricing{% endblock %}
+{% block title %}{{ t("AdAgent Pro — Pricing") }}{% endblock %}
+{% block robots %}{% endblock %}
 
 {% block content %}
 <div class="container" style="max-width:680px">
   <div class="hero" style="padding-top:36px">
-    <h1>Unlock <span>full analysis</span></h1>
-    <p>See every ad in your search — not just the first {{ settings.FREE_ADS_LIMIT }}.</p>
+    <h1>{{ t("Unlock") }} <span>{{ t("full analysis") }}</span></h1>
+    <p>{{ t("See every ad in your search — not just the first {n}.", n=settings.FREE_ADS_LIMIT) }}</p>
   </div>
 
   {% if subscribed %}
   <div class="alert alert-success" style="text-align:center">
-    ✅ You're already on AdAgent Pro. <a href="/">Run a search →</a>
+    ✅ {{ t("You're already on AdAgent Pro.") }} <a href="/">{{ t("Run a search →") }}</a>
   </div>
   {% else %}
 
@@ -18,44 +19,44 @@
     <div class="pricing-grid">
       <!-- Free -->
       <div class="pricing-card">
-        <div class="pricing-label">Free</div>
-        <div class="pricing-price">$0</div>
+        <div class="pricing-label">{{ t("Free") }}</div>
+        <div class="pricing-price">{{ t("$0") }}</div>
         <ul class="pricing-features">
-          <li>First {{ settings.FREE_ADS_LIMIT }} ads per search</li>
-          <li>AI score &amp; verdict per ad</li>
-          <li>Ranked leaderboard</li>
-          <li class="no">All ads in results</li>
-          <li class="no">Report history</li>
+          <li>{{ t("First {n} ads per search", n=settings.FREE_ADS_LIMIT) }}</li>
+          <li>{{ t("AI score & verdict per ad") }}</li>
+          <li>{{ t("Ranked leaderboard") }}</li>
+          <li class="no">{{ t("All ads in results") }}</li>
+          <li class="no">{{ t("Report history") }}</li>
         </ul>
-        <a href="/" class="btn btn-outline btn-full">Continue free</a>
+        <a href="/{{ 'pl' if ui_lang == 'pl' else '' }}" class="btn btn-outline btn-full">{{ t("Continue free") }}</a>
       </div>
 
       <!-- Pro -->
       <div class="pricing-card featured">
-        <div class="pricing-label">Pro — Most popular</div>
-        <div class="pricing-price">$9.99 <span>/month</span></div>
+        <div class="pricing-label">{{ t("Pro — Most popular") }}</div>
+        <div class="pricing-price">{{ price_label }} <span>{{ t("/month") }}</span></div>
         <ul class="pricing-features">
-          <li>All ads analyzed</li>
-          <li>AI score &amp; verdict per ad</li>
-          <li>Ranked leaderboard</li>
-          <li>Full report history</li>
-          <li>Cancel any time</li>
+          <li>{{ t("All ads analyzed") }}</li>
+          <li>{{ t("AI score & verdict per ad") }}</li>
+          <li>{{ t("Ranked leaderboard") }}</li>
+          <li>{{ t("Full report history") }}</li>
+          <li>{{ t("Cancel any time") }}</li>
         </ul>
         <form action="/subscribe/checkout" method="post">
           <input type="hidden" name="plan" value="monthly">
-          <button type="submit" class="btn btn-green btn-full">Subscribe — $9.99/month →</button>
+          <button type="submit" class="btn btn-green btn-full">{{ t("Subscribe") }} — {{ price_label }}{{ t("/month") }} →</button>
         </form>
       </div>
     </div>
 
     {% if plans|length > 1 %}
-    <p class="section-title" style="margin-top:24px">Other plans</p>
+    <p class="section-title" style="margin-top:24px">{{ t("Other plans") }}</p>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
       {% for plan in plans if plan.period != 'monthly' %}
       <form action="/subscribe/checkout" method="post">
         <input type="hidden" name="plan" value="{{ plan.period }}">
         <button type="submit" class="btn btn-outline" style="padding:8px 18px;font-size:0.85rem">
-          {{ plan.period | capitalize }} plan
+          {{ t("{period} plan", period=t(plan.period | capitalize)) }}
         </button>
       </form>
       {% endfor %}
@@ -64,10 +65,8 @@
   </div>
 
   <div class="card" style="font-size:0.88rem;color:var(--muted)">
-    <p><strong style="color:var(--text)">How it works:</strong> after payment Stripe sends you a
-    confirmation email with a sign-in link. Click it to access your account and all your reports.</p>
-    <p style="margin-top:8px">Payment is processed securely by Stripe. We never store card details.
-    Cancel any time from your Stripe portal.</p>
+    <p><strong style="color:var(--text)">{{ t("How it works:") }}</strong> {{ t("after payment we email you a sign-in link. Click it to access your account and all your reports.") }}</p>
+    <p style="margin-top:8px">{{ t("Payment is processed securely by Stripe. We never store card details. Cancel any time from your Stripe portal.") }}</p>
   </div>
 
   {% endif %}

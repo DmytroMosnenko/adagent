@@ -1,17 +1,16 @@
 {% extends "base.html" %}
-{% block title %}My Reports — AdAgent{% endblock %}
+{% block title %}{{ t("My Reports — AdAgent") }}{% endblock %}
 {% block content %}
 <div class="container">
   <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
-    <h1 style="font-size:1.3rem;color:var(--navy);flex:1">My Reports</h1>
-    <a href="/" class="btn btn-primary" style="padding:7px 16px;font-size:0.85rem">New search →</a>
+    <h1 style="font-size:1.3rem;color:var(--navy);flex:1">{{ t("My Reports") }}</h1>
+    <a href="/{{ 'pl' if ui_lang == 'pl' else '' }}" class="btn btn-primary" style="padding:7px 16px;font-size:0.85rem">{{ t("New search →") }}</a>
   </div>
 
   {% if not subscribed %}
   <div class="upgrade-banner">
-    <p>🔒 Your reports show only {{ settings.FREE_ADS_LIMIT }} ads each.
-       Upgrade for full results.</p>
-    <a href="/subscribe">Upgrade to Pro →</a>
+    <p>🔒 {{ t("Your reports show only {n} ads each. Upgrade for full results.", n=settings.FREE_ADS_LIMIT) }}</p>
+    <a href="/subscribe">{{ t("Upgrade to Pro →") }}</a>
   </div>
   {% endif %}
 
@@ -20,11 +19,11 @@
     <table class="history">
       <thead>
         <tr>
-          <th>Date</th>
-          <th>Filter URL</th>
-          <th>Preset</th>
-          <th>Ads</th>
-          <th>Status</th>
+          <th>{{ t("Date") }}</th>
+          <th>{{ t("Filter URL") }}</th>
+          <th>{{ t("Preset") }}</th>
+          <th>{{ t("Ads") }}</th>
+          <th>{{ t("Status") }}</th>
           <th></th>
         </tr>
       </thead>
@@ -38,15 +37,15 @@
             <a href="{{ r.filter_url }}" target="_blank" title="{{ r.filter_url }}"
                style="color:var(--muted);font-size:0.82rem">{{ r.filter_url }}</a>
           </td>
-          <td>{{ r.prompt_preset | default('custom') | capitalize }}</td>
+          <td>{{ t(r.prompt_preset | default('custom') | capitalize) }}</td>
           <td>
             {% if r.ads_analyzed %}{{ r.ads_analyzed }}{% if r.is_limited %}<span style="color:var(--amber)">*</span>{% endif %}{% else %}—{% endif %}
           </td>
-          <td><span class="status-badge {{ r.status }}">{{ r.status }}</span></td>
+          <td><span class="status-badge {{ r.status }}">{{ t(r.status) }}</span></td>
           <td>
             {% if r.status == 'done' %}
             <a href="/report/{{ r.id }}" class="btn btn-outline"
-               style="padding:5px 12px;font-size:0.8rem">View</a>
+               style="padding:5px 12px;font-size:0.8rem">{{ t("View") }}</a>
             {% endif %}
           </td>
         </tr>
@@ -55,14 +54,14 @@
     </table>
     {% else %}
     <div class="history-empty">
-      <p>No reports yet. <a href="/">Run your first analysis →</a></p>
+      <p>{{ t("No reports yet.") }} <a href="/{{ 'pl' if ui_lang == 'pl' else '' }}">{{ t("Run your first analysis →") }}</a></p>
     </div>
     {% endif %}
   </div>
 
   {% if reports %}
   <p style="font-size:0.78rem;color:var(--muted);margin-top:10px">
-    * Limited to {{ settings.FREE_ADS_LIMIT }} ads (free tier).
+    * {{ t("Limited to {n} ads (free tier).", n=settings.FREE_ADS_LIMIT) }}
   </p>
   {% endif %}
 </div>

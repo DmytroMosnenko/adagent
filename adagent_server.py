@@ -4,8 +4,10 @@ Routes: web UI + Stripe webhooks + JSON status API
 """
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from service.models import generate_report_id
 from pathlib import Path
 from typing import Optional
@@ -16,7 +18,7 @@ from fastapi import (
     BackgroundTasks, Cookie, Depends, FastAPI, Form,
     HTTPException, Request, Response,
 )
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,7 +29,7 @@ from service.logger import get_logger, setup_root_logging
 
 # Apply unified log formatting before any third-party loggers are configured
 setup_root_logging()
-from service import crud, auth, email_client, stripe_client, scraper
+from service import crud, auth, email_client, stripe_client, scraper, i18n
 from service.tasks import run_analysis
 
 logger = get_logger(__name__)
@@ -68,12 +70,64 @@ from service.languages import LANGUAGES, language_options, detect_language, DEFA
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
-def _tpl(name: str, request: Request, extra: dict | None = None):
+# Messages shown on the landing page after a rejected /analyze. Passed as short
+# codes (?error=invalid_url) instead of free text: the text is translated here, and
+# arbitrary ?error= text can no longer be reflected into the page.
+FORM_ERRORS = {
+    "invalid_url":  "Invalid URL. Must be from olx.pl, otomoto.pl or otodom.pl",
+    "need_prompts": "Please provide both custom prompts or choose a preset.",
+    "daily_limit":  "Daily limit of free analyses reached. Upgrade to Pro or try again tomorrow.",
+    "busy":         "Free analyses are temporarily unavailable due to high demand. Please try again later or upgrade to Pro.",
+}
+
+WELCOME_LINK_TTL_MINUTES = 60 * 24
+
+
+def _ui_lang(request: Request, forced: Optional[str] = None) -> str:
+    return forced or i18n.pick_ui_language(
+        request.query_params.get("lang"),
+        request.cookies.get("ui_lang"),
+        request.headers.get("accept-language"),
+    )
+
+
+def _switch_url(request: Request, ui_lang: str) -> str:
+    """Link for the PL/EN toggle in the nav. Symmetric: both languages get a
+    clean, stable path on the landing page (/pl, /en); every other page keeps
+    its own path and flips ?lang=."""
+    other = "en" if ui_lang == "pl" else "pl"
+    if request.url.path in ("/", "/pl", "/en"):
+        return f"/{other}"
+    return f"{request.url.path}?lang={other}"
+
+
+def _tpl(name: str, request: Request, extra: dict | None = None, lang: Optional[str] = None):
+    ui_lang = _ui_lang(request, lang)
     ctx = {"request": request, "presets": PRESETS, "settings": settings,
            "languages": language_options(),
-           "current_year": datetime.now(timezone.utc).year}
+           "current_year": datetime.now(timezone.utc).year,
+           "ui_lang": ui_lang, "t": i18n.translator(ui_lang),
+           "price_label": settings.price_label(ui_lang),
+           "switch_url": _switch_url(request, ui_lang)}
     ctx.update(extra or {})
-    return templates.TemplateResponse(request=request, name=name, context=ctx)
+    resp = templates.TemplateResponse(request=request, name=name, context=ctx)
+    # Remember whatever language we actually resolved (explicit ?lang=, forced
+    # /pl or /en, an existing cookie, or a first-visit Accept-Language guess) —
+    # so a returning visitor keeps getting their language even if their browser
+    # locale or lack of an ?lang= param would otherwise resolve differently.
+    if request.cookies.get("ui_lang") != ui_lang:
+        resp.set_cookie("ui_lang", ui_lang, max_age=365 * 86400,
+                        httponly=True, secure=True, samesite="lax")
+    resp.headers["Vary"] = "Accept-Language, Cookie"
+    return resp
+
+
+def _client_hash(request: Request) -> str:
+    """Keyed hash of the client IP (nginx sets X-Real-IP). Never stores the raw IP."""
+    ip = request.client.host if request.client else ""
+    if ip in ("127.0.0.1", "::1"):
+        ip = request.headers.get("x-real-ip", ip)
+    return hmac.new(settings.SECRET_KEY.encode(), ip.encode(), hashlib.sha256).hexdigest()
 
 
 async def _resolve_user_and_sub(
@@ -93,6 +147,19 @@ async def _resolve_user_and_sub(
 
 # ── Landing page ───────────────────────────────────────────────────────────────
 
+async def _render_index(request: Request, db: AsyncSession, session_token: Optional[str],
+                        error: Optional[str], lang: Optional[str]):
+    user, subscribed = await _resolve_user_and_sub(session_token, db)
+    ui_lang = _ui_lang(request, lang)
+    # Polish UI -> Polish report by default; otherwise keep the old Accept-Language behaviour
+    default_language = "pl" if ui_lang == "pl" else detect_language(request.headers.get("accept-language"))
+    error_text = i18n.translate(FORM_ERRORS[error], ui_lang) if error in FORM_ERRORS else None
+    return _tpl("index.html", request, {
+        "user": user, "subscribed": subscribed, "error": error_text,
+        "default_language": default_language,
+    }, lang=lang)
+
+
 @app.get("/", response_class=HTMLResponse)
 async def index(
     request: Request,
@@ -100,12 +167,67 @@ async def index(
     adagent_session: Optional[str] = Cookie(default=None),
     error: Optional[str] = None,
 ):
-    user, subscribed = await _resolve_user_and_sub(adagent_session, db)
-    default_language = detect_language(request.headers.get("accept-language"))
-    return _tpl("index.html", request, {
-        "user": user, "subscribed": subscribed, "error": error,
-        "default_language": default_language,
-    })
+    return await _render_index(request, db, adagent_session, error, None)
+
+
+@app.get("/pl", response_class=HTMLResponse)
+async def index_pl(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    adagent_session: Optional[str] = Cookie(default=None),
+    error: Optional[str] = None,
+):
+    """Stable Polish landing page — the final URL for Google Ads / hreflang."""
+    return await _render_index(request, db, adagent_session, error, "pl")
+
+
+@app.get("/en", response_class=HTMLResponse)
+async def index_en(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    adagent_session: Optional[str] = Cookie(default=None),
+    error: Optional[str] = None,
+):
+    """
+    Mirror of /pl for English — gives the language toggle a clean, symmetric
+    URL on both sides (was previously "/?lang=en"). Canonicalizes to "/"
+    (see index.html's <link rel="canonical">) so this never competes with "/"
+    as a separate indexed URL — it's a link target, not a distinct page.
+    """
+    return await _render_index(request, db, adagent_session, error, "en")
+
+
+@app.get("/robots.txt", include_in_schema=False)
+async def robots_txt():
+    return PlainTextResponse(
+        "User-agent: *\n"
+        "Disallow: /report/\n"
+        "Disallow: /api/\n"
+        "Disallow: /auth\n"
+        "Disallow: /history\n"
+        "Disallow: /analyze\n"
+        "Disallow: /subscribe/\n"
+        "\n"
+        f"Sitemap: {settings.APP_BASE_URL}/sitemap.xml\n"
+    )
+
+
+@app.get("/sitemap.xml", include_in_schema=False)
+async def sitemap_xml():
+    base = settings.APP_BASE_URL
+    def alt(lang: str, path: str) -> str:
+        return f'<xhtml:link rel="alternate" hreflang="{lang}" href="{base}{path}"/>'
+    urls = [
+        ("/",  [alt("en", "/"), alt("pl", "/pl"), alt("x-default", "/")]),
+        ("/pl", [alt("en", "/"), alt("pl", "/pl"), alt("x-default", "/")]),
+        ("/subscribe", []), ("/privacy", []), ("/terms", []),
+    ]
+    body = "".join(f"<url><loc>{base}{path}</loc>{''.join(alts)}</url>" for path, alts in urls)
+    xml = ('<?xml version="1.0" encoding="UTF-8"?>'
+           '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" '
+           'xmlns:xhtml="http://www.w3.org/1999/xhtml">' + body + "</urlset>")
+    return Response(content=xml, media_type="application/xml")
+
 
 @app.get("/privacy", response_class=HTMLResponse)
 async def privacy_policy(
@@ -129,6 +251,11 @@ async def terms_of_service(
 
 # ── Analyze form submit ────────────────────────────────────────────────────────
 
+def _home(request: Request) -> str:
+    """Landing page in the visitor's UI language (so error redirects stay Polish)."""
+    return "/pl" if _ui_lang(request) == "pl" else "/"
+
+
 @app.post("/analyze")
 async def analyze(
     request: Request,
@@ -145,7 +272,7 @@ async def analyze(
     allowed_hosts = ("olx.pl", "otomoto.pl", "otodom.pl")
     filter_url = filter_url.strip()
     if not any(h in filter_url for h in allowed_hosts) or not filter_url.startswith("http"):
-        return RedirectResponse("/?error=Invalid+URL.+Must+be+from+olx.pl,+otomoto.pl+or+otodom.pl", 303)
+        return RedirectResponse(f"{_home(request)}?error=invalid_url", 303)
 
     # Validate preset
     if prompt_preset and prompt_preset not in PRESETS:
@@ -158,10 +285,21 @@ async def analyze(
     # Custom prompt requires both fields
     if not prompt_preset:
         if not custom_ad_prompt or not custom_summary_prompt:
-            return RedirectResponse("/?error=Please+provide+both+custom+prompts+or+select+a+preset.", 303)
+            return RedirectResponse(f"{_home(request)}?error=need_prompts", 303)
 
     # Resolve user & subscription
     user, subscribed = await _resolve_user_and_sub(adagent_session, db)
+
+    # Free-tier guard (subscribers are never limited)
+    client_hash = _client_hash(request)
+    if not subscribed:
+        since = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=24)
+        per_client = settings.FREE_REPORTS_PER_CLIENT_PER_DAY
+        if per_client > 0 and await crud.count_free_reports_since(db, since, client_hash) >= per_client:
+            return RedirectResponse(f"{_home(request)}?error=daily_limit", 303)
+        global_cap = settings.FREE_REPORTS_GLOBAL_PER_DAY
+        if global_cap > 0 and await crud.count_free_reports_since(db, since) >= global_cap:
+            return RedirectResponse(f"{_home(request)}?error=busy", 303)
 
     # Create report
     id_bytes  = generate_report_id()
@@ -174,6 +312,7 @@ async def analyze(
         custom_ad_prompt=custom_ad_prompt if not prompt_preset else None,
         custom_summary_prompt=custom_summary_prompt if not prompt_preset else None,
         report_language=report_language,
+        client_hash=client_hash,
         is_limited=not subscribed,
         status="pending",
     )
@@ -295,7 +434,7 @@ async def auth_send(
     await crud.get_or_create_user(db, email)
     token = auth.generate_token()
     await crud.create_magic_link(db, token, email, settings.MAGIC_LINK_TTL_MINUTES)
-    await email_client.send_magic_link(email, token)
+    await email_client.send_magic_link(email, token, _ui_lang(request))
     return RedirectResponse(f"/auth?sent={email}", status_code=303)
 
 
@@ -373,6 +512,7 @@ async def subscribe_page(
 
 @app.post("/subscribe/checkout")
 async def subscribe_checkout(
+    request: Request,
     db: AsyncSession = Depends(get_db),
     adagent_session: Optional[str] = Cookie(default=None),
     plan: str = Form(default="monthly"),
@@ -380,7 +520,7 @@ async def subscribe_checkout(
     user, _ = await _resolve_user_and_sub(adagent_session, db)
     customer_email = user.email if user else None
     try:
-        url = await stripe_client.create_checkout_session(plan, customer_email)
+        url = await stripe_client.create_checkout_session(plan, customer_email, lang=_ui_lang(request))
     except ValueError as exc:
         raise HTTPException(400, str(exc))
     return RedirectResponse(url, status_code=303)
@@ -391,10 +531,15 @@ async def subscribe_success(
     request: Request,
     db: AsyncSession = Depends(get_db),
     adagent_session: Optional[str] = Cookie(default=None),
+    session_id: Optional[str] = None,
 ):
     user, subscribed = await _resolve_user_and_sub(adagent_session, db)
+    # Verified purchase data for the conversion tag (None -> tag skipped)
+    purchase = None
+    if settings.tracking_enabled:
+        purchase = await stripe_client.get_checkout_summary(session_id)
     return _tpl("subscribe_success.html", request, {
-        "user": user, "subscribed": subscribed,
+        "user": user, "subscribed": subscribed, "purchase": purchase,
     })
 
 
@@ -509,8 +654,9 @@ async def _handle_checkout_completed(db: AsyncSession, session: dict) -> None:
 
     # Send access magic link so they can log in immediately
     token = auth.generate_token()
-    await crud.create_magic_link(db, token, customer_email.lower(), 60 * 24)  # 24h
-    await email_client.send_subscription_welcome(customer_email, token)
+    await crud.create_magic_link(db, token, customer_email.lower(), WELCOME_LINK_TTL_MINUTES)  # 24h
+    lang = i18n.normalize(session.get("locale")) or "en"   # set by create_checkout_session
+    await email_client.send_subscription_welcome(customer_email, token, lang, WELCOME_LINK_TTL_MINUTES)
     logger.info("[webhook] subscription created for %s plan=%s", customer_email, plan)
 
 

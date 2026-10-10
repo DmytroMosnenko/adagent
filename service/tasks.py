@@ -44,7 +44,10 @@ async def _maybe_notify_finished(report_id: str, status: str) -> None:
             user = await crud.get_user_by_id(db, report.user_id)
             if not user:
                 return
-        await email_client.send_report_ready(user.email, report_id, status=status)
+        await email_client.send_report_ready(
+            user.email, report_id, status=status,
+            lang="pl" if report.report_language == "pl" else "en",
+        )
     except Exception as exc:
         logger.warning("[task] %s finished-notification email failed: %s", report_id, exc)
 
@@ -198,6 +201,7 @@ async def run_analysis(report_id: str) -> None:
                 report_id=report_id,
                 ads_found=ads_found,
                 is_limited=report.is_limited,
+                ui_lang="pl" if report.report_language == "pl" else "en",
                 template_dir="templates",
                 template_file="report.html.j2",
             )

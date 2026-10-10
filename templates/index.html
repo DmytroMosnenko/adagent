@@ -1,11 +1,24 @@
 {% extends "base.html" %}
-{% block title %}AdAgent — Analyze OLX ads with AI{% endblock %}
+{% block title %}{{ t("AdAgent — Analyze OLX ads with AI") }}{% endblock %}
+{% block meta_description %}{{ t("Paste an OLX, Otomoto or Otodom search link. AI reads every ad, scores it 1–10, flags red flags and known model weak points, and ranks the offers for you.") }}{% endblock %}
+
+{% block robots %}{% endblock %}
+{% block seo %}
+<link rel="canonical" href="{{ settings.APP_BASE_URL }}{{ '/pl' if ui_lang == 'pl' else '/' }}">
+<link rel="alternate" hreflang="en" href="{{ settings.APP_BASE_URL }}/">
+<link rel="alternate" hreflang="pl" href="{{ settings.APP_BASE_URL }}/pl">
+<link rel="alternate" hreflang="x-default" href="{{ settings.APP_BASE_URL }}/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="AdAgent">
+<meta property="og:title" content="{{ t('AdAgent — Analyze OLX ads with AI') }}">
+<meta property="og:description" content="{{ t('Paste an OLX, Otomoto or Otodom search link. AI reads every ad, scores it 1–10, flags red flags and known model weak points, and ranks the offers for you.') }}">
+<meta property="og:url" content="{{ settings.APP_BASE_URL }}{{ '/pl' if ui_lang == 'pl' else '/' }}">
+{% endblock %}
 
 {% block content %}
 <div class="hero">
-  <h1>Find the best deal,<br><span>powered by AI</span></h1>
-  <p>Paste any OLX search link. AdAgent reads every ad, scores it 1–10,
-     flags red flags, and gives you a ranked leaderboard in minutes.</p>
+  <h1>{{ t("Find the best deal,") }}<br><span>{{ t("powered by AI") }}</span></h1>
+  <p>{{ t("Paste any OLX search link. AdAgent reads every ad, scores it 1–10, flags red flags, and gives you a ranked leaderboard in minutes.") }}</p>
 </div>
 
 <div class="container" style="max-width:680px">
@@ -19,49 +32,49 @@
 
       <!-- OLX URL -->
       <div class="form-group">
-        <label class="form-label" for="filter_url">OLX / Otomoto / Otodom filter URL</label>
+        <label class="form-label" for="filter_url">{{ t("OLX / Otomoto / Otodom filter URL") }}</label>
         <input class="form-input" type="url" id="filter_url" name="filter_url" required
                placeholder="https://www.olx.pl/motoryzacja/samochody/q-mini/">
-        <p class="form-hint">Go to OLX, apply your filters, copy the URL from the browser bar.</p>
+        <p class="form-hint">{{ t("Go to OLX, apply your filters, copy the URL from the browser bar.") }}</p>
       </div>
 
       <!-- Preset selector -->
       <div class="form-group">
-        <label class="form-label">Analysis preset</label>
+        <label class="form-label">{{ t("Analysis preset") }}</label>
         <div class="preset-grid">
           {% for key, meta in presets.items() %}
           <label class="preset-card">
             <input type="radio" name="prompt_preset" value="{{ key }}"
                    {% if loop.first %}checked{% endif %}>
-            <span class="preset-card-label">{{ meta.label }}</span>
-            <span class="preset-card-desc">{{ meta.description }}</span>
+            <span class="preset-card-label">{{ meta.get('label_' ~ ui_lang, meta.label) }}</span>
+            <span class="preset-card-desc">{{ meta.get('description_' ~ ui_lang, meta.description) }}</span>
           </label>
           {% endfor %}
           <label class="preset-card">
             <input type="radio" name="prompt_preset" value="">
-            <span class="preset-card-label">✏️ Custom prompts</span>
-            <span class="preset-card-desc">Write your own analysis instructions</span>
+            <span class="preset-card-label">✏️ {{ t("Custom prompts") }}</span>
+            <span class="preset-card-desc">{{ t("Write your own analysis instructions") }}</span>
           </label>
         </div>
 
         <!-- Custom prompt fields (shown via JS) -->
         <div id="custom-fields" style="display:none" class="preset-custom">
           <div class="form-group">
-            <label class="form-label" for="custom_ad_prompt">Per-ad analysis prompt</label>
+            <label class="form-label" for="custom_ad_prompt">{{ t("Per-ad analysis prompt") }}</label>
             <textarea class="form-textarea" id="custom_ad_prompt" name="custom_ad_prompt"
-                      placeholder="You are an expert buyer. Analyze this ad and return a short verdict…"></textarea>
+                      placeholder="{{ t('You are an expert buyer. Analyze this ad and return a short verdict…') }}"></textarea>
           </div>
           <div class="form-group">
-            <label class="form-label" for="custom_summary_prompt">Summary prompt</label>
+            <label class="form-label" for="custom_summary_prompt">{{ t("Summary prompt") }}</label>
             <textarea class="form-textarea" id="custom_summary_prompt" name="custom_summary_prompt"
-                      placeholder="Based on the analyses above, summarize the market and recommend the best options…"></textarea>
+                      placeholder="{{ t('Based on the analyses above, summarize the market and recommend the best options…') }}"></textarea>
           </div>
         </div>
       </div>
 
       <!-- Report language -->
       <div class="form-group">
-        <label class="form-label" for="report_language">Report language</label>
+        <label class="form-label" for="report_language">{{ t("Report language") }}</label>
         <select class="form-input" id="report_language" name="report_language">
           {% for lang in languages %}
           <option value="{{ lang.code }}" {% if lang.code == default_language %}selected{% endif %}>
@@ -69,51 +82,105 @@
           </option>
           {% endfor %}
         </select>
-        <p class="form-hint">AI analysis and summary will be written in this language.</p>
+        <p class="form-hint">{{ t("AI analysis and summary will be written in this language.") }}</p>
       </div>
 
       <!-- Freemium note -->
       {% if not subscribed %}
       <div class="alert alert-info" style="margin-bottom:18px">
-        🎁 <strong>Free tier:</strong> first {{ settings.FREE_ADS_LIMIT }} ads analyzed.
-        <a href="/subscribe" style="font-weight:700">Upgrade to Pro</a> to unlock all ads.
+        🎁 <strong>{{ t("Free tier:") }}</strong> {{ t("first {n} ads analyzed.", n=settings.FREE_ADS_LIMIT) }}
+        <a href="/subscribe" style="font-weight:700">{{ t("Upgrade to Pro") }}</a> {{ t("to unlock all ads.") }}
       </div>
       {% else %}
       <div class="alert alert-success" style="margin-bottom:18px">
-        ✅ <strong>AdAgent Pro</strong> — all ads will be analyzed.
+        ✅ <strong>AdAgent Pro</strong> — {{ t("all ads will be analyzed.") }}
       </div>
       {% endif %}
 
-      <button type="submit" class="btn btn-primary btn-full">Analyze →</button>
+      <button type="submit" class="btn btn-primary btn-full">{{ t("Analyze →") }}</button>
+      <p class="form-hint" style="text-align:center;margin-top:10px">{{ t("No sign-up needed for the free tier. Analysis takes about 5–10 minutes — you can close the tab and come back.") }}</p>
+      {% if settings.SAMPLE_REPORT_URL %}
+      <p style="text-align:center;margin-top:6px"><a href="{{ settings.SAMPLE_REPORT_URL }}" target="_blank" rel="noopener">{{ t("See a sample report →") }}</a></p>
+      {% endif %}
     </form>
   </div>
+
+  <!-- How it works -->
+  <section class="landing-section">
+    <h2 class="landing-h">{{ t("How it works") }}</h2>
+    <div class="steps">
+      <div class="step"><span class="step-n">1</span>
+        <h3>{{ t("Paste a search link") }}</h3>
+        <p>{{ t("Set your filters on OLX, Otomoto or Otodom and copy the address from the browser bar.") }}</p></div>
+      <div class="step"><span class="step-n">2</span>
+        <h3>{{ t("AI reads every ad") }}</h3>
+        <p>{{ t("Each listing is analyzed one by one — the ad text is cross-checked with what is known about that exact model or building.") }}</p></div>
+      <div class="step"><span class="step-n">3</span>
+        <h3>{{ t("Get a ranked report") }}</h3>
+        <p>{{ t("A leaderboard with scores, red flags and a market summary — so you know which offers to view first.") }}</p></div>
+    </div>
+  </section>
+
+  <!-- What is in the report -->
+  <section class="landing-section">
+    <h2 class="landing-h">{{ t("What is in the report") }}</h2>
+    <div class="card">
+      <ul class="feature-list">
+        <li><strong>{{ t("Score 1–10 and a verdict") }}</strong> — {{ t("worth viewing, maybe, or skip, with a one-line reason.") }}</li>
+        <li><strong>{{ t("Red flags and positives") }}</strong> — {{ t("short, concrete points taken from the ad itself.") }}</li>
+        <li><strong>{{ t("Known weak points at this mileage") }}</strong> — {{ t("for cars: typical failures of the model and engine compared with the repairs the seller mentions.") }}</li>
+        <li><strong>{{ t("Real-world consumption") }}</strong> — {{ t("owner-level fuel figures, not just the factory number.") }}</li>
+        <li><strong>{{ t("Location and building profile") }}</strong> — {{ t("for flats and houses: who the area suits and the typical issues of that building type and era.") }}</li>
+        <li><strong>{{ t("Market summary") }}</strong> — {{ t("price range, average price and which ads to look at first.") }}</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="landing-section">
+    <h2 class="landing-h">{{ t("Frequently asked questions") }}</h2>
+    <div class="faq">
+      <details><summary>{{ t("How long does an analysis take?") }}</summary>
+        <p>{{ t("Usually 5–10 minutes, depending on how many ads the search returns. You can close the tab — the analysis continues, and you can get a notification when it is done.") }}</p></details>
+      <details><summary>{{ t("Does it work for real estate too?") }}</summary>
+        <p>{{ t("Yes. Choose the Real Estate preset for Otodom and OLX property searches, or the Vehicles preset for Otomoto and OLX motor searches.") }}</p></details>
+      <details><summary>{{ t("Can I trust the AI verdict?") }}</summary>
+        <p>{{ t("Treat it as a fast, well-informed first filter, not as an inspection. The AI can make mistakes and the ad itself may be inaccurate — always check the car or property in person before you pay.") }}</p></details>
+      <details><summary>{{ t("Is AdAgent affiliated with OLX, Otomoto or Otodom?") }}</summary>
+        <p>{{ t("No. AdAgent is an independent tool and is not affiliated with, or endorsed by, OLX Group, Otomoto or Otodom.") }}</p></details>
+      <details><summary>{{ t("What is free and what is Pro?") }}</summary>
+        <p>{{ t("The free tier analyzes the first {n} ads of every search. Pro analyzes all ads and keeps your report history.", n=settings.FREE_ADS_LIMIT) }}</p></details>
+      <details><summary>{{ t("Can I cancel the subscription?") }}</summary>
+        <p>{{ t("Yes, at any time from the billing portal. You keep Pro access until the end of the period you already paid for.") }}</p></details>
+    </div>
+  </section>
 
   <!-- Feature comparison -->
   {% if not subscribed %}
   <div class="card" style="margin-top:8px">
-    <p class="section-title">What you get with AdAgent Pro</p>
+    <p class="section-title">{{ t("What you get with AdAgent Pro") }}</p>
     <div class="pricing-grid">
       <div class="pricing-card">
-        <div class="pricing-label">Free</div>
-        <div class="pricing-price">$0</div>
+        <div class="pricing-label">{{ t("Free") }}</div>
+        <div class="pricing-price">{{ t("$0") }}</div>
         <ul class="pricing-features">
-          <li>First {{ settings.FREE_ADS_LIMIT }} ads per search</li>
-          <li>Leaderboard &amp; AI scores</li>
-          <li class="no">Full search results</li>
-          <li class="no">Report history</li>
+          <li>{{ t("First {n} ads per search", n=settings.FREE_ADS_LIMIT) }}</li>
+          <li>{{ t("Leaderboard & AI scores") }}</li>
+          <li class="no">{{ t("Full search results") }}</li>
+          <li class="no">{{ t("Report history") }}</li>
         </ul>
-        <span style="color:var(--muted);font-size:0.85rem">You're on the free plan</span>
+        <span style="color:var(--muted);font-size:0.85rem">{{ t("You're on the free plan") }}</span>
       </div>
       <div class="pricing-card featured">
         <div class="pricing-label">Pro</div>
-        <div class="pricing-price">$9.99 <span>/month</span></div>
+        <div class="pricing-price">{{ price_label }} <span>{{ t("/month") }}</span></div>
         <ul class="pricing-features">
-          <li>All ads analyzed</li>
-          <li>Leaderboard &amp; AI scores</li>
-          <li>Full search results</li>
-          <li>Report history</li>
+          <li>{{ t("All ads analyzed") }}</li>
+          <li>{{ t("Leaderboard & AI scores") }}</li>
+          <li>{{ t("Full search results") }}</li>
+          <li>{{ t("Report history") }}</li>
         </ul>
-        <a href="/subscribe" class="btn btn-green btn-full">Upgrade now →</a>
+        <a href="/subscribe" class="btn btn-green btn-full">{{ t("Upgrade now →") }}</a>
       </div>
     </div>
   </div>

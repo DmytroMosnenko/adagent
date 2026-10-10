@@ -1,9 +1,253 @@
 {% extends "base.html" %}
-{% block title %}Privacy Policy — AdAgent{% endblock %}
+{% block robots %}{% endblock %}
+{% block title %}{{ "Polityka Prywatności — AdAgent" if ui_lang == "pl" else "Privacy Policy — AdAgent" }}{% endblock %}
 {% block content %}
 <div class="container">
   <div class="card legal">
-    <div class="legal-header"><h1>AdAgent — Privacy Policy</h1></div>
+    <div class="legal-header">{% if ui_lang == 'pl' %}
+<h1>AdAgent — Polityka Prywatności</h1></div>
+<p class="legal-updated">Ostatnia aktualizacja: 2026-09-24</p>
+<p>Niniejsza Polityka Prywatności wyjaśnia, w jaki sposób AdAgent („<strong>AdAgent</strong>”, „<strong>my</strong>”) przetwarza dane osobowe podczas korzystania z usługi dostępnej pod adresem <strong>adagent.dimosense.com</strong> („<strong>Usługa</strong>”).</p>
+<hr />
+<h2 id="who-is-responsible-for-your-data-data-controller">1. Kto odpowiada za Twoje dane (Administrator danych)</h2>
+<p>AdAgent jest prowadzony przez osobę fizyczną prowadzącą jednoosobową działalność gospodarczą zarejestrowaną w Polsce:</p>
+<blockquote>
+<p><strong>DMYTRO MOSNENKO</strong><br />
+Jednoosobowa działalność gospodarcza (JDG)<br />
+Adres prowadzenia działalności: Rajmunda Rembielińskiego 16, 93-575 Łódź, Polska<br />
+NIP: 7272885849 · REGON: 540831059<br />
+Kontakt w sprawach ochrony danych: <strong>privacy-adagent@dimosense.com</strong></p>
+</blockquote>
+<p>Dla celów ogólnego rozporządzenia o ochronie danych UE (<strong>„RODO”</strong>) Dmytro Mosnenko jest <strong>administratorem danych</strong> w zakresie danych osobowych przetwarzanych w ramach Usługi oraz <strong>podmiotem przetwarzającym</strong> w zakresie danych ogłoszeń osób trzecich, które zlecasz Usłudze pobrać w Twoim imieniu (patrz punkt 4).</p>
+<p>Nie wyznaczyliśmy formalnego Inspektora Ochrony Danych, ponieważ nie jest to wymagane dla działalności tej wielkości i zakresu przetwarzania. Zapytania można kierować na powyższy adres kontaktowy.</p>
+<hr />
+<h2 id="scope">2. Zakres</h2>
+<p>Niniejsza Polityka ma zastosowanie do:</p>
+<ul>
+<li>Odwiedzających adagent.dimosense.com;</li>
+<li>Zarejestrowanych użytkowników (posiadaczy kont uwierzytelnianych przez link logowania);</li>
+<li>Subskrybentów Pro; oraz</li>
+<li>Każdej osoby, której informacje pojawiają się w ogłoszeniu przesłanym przez Ciebie do Usługi w celu analizy (<strong>„osoba trzecia, której dane dotyczą”</strong> — np. prywatny sprzedawca na OLX, Otomoto lub Otodom).</li>
+</ul>
+<hr />
+<h2 id="what-personal-data-we-collect">3. Jakie dane osobowe zbieramy</h2>
+<h3 id="data-you-provide-directly">3.1 Dane podawane przez Ciebie bezpośrednio</h3>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Dane</th>
+<th>Kiedy są zbierane</th>
+<th>W jakim celu</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Adres e-mail</td>
+<td>Gdy prosisz o link logowania, subskrybujesz lub prosisz o powiadomienie po zakończeniu raportu</td>
+<td>Uwierzytelnianie bezhasłowe, wysyłka linków logowania i powiadomień o gotowości raportu, zarządzanie subskrypcją</td>
+</tr>
+<tr class="even">
+<td>Parametry wyszukiwania/raportu (przesłany link do ogłoszenia, wybrany rodzaj analizy lub tekst własnego promptu, wybrany język raportu)</td>
+<td>Za każdym razem, gdy uruchamiasz analizę</td>
+<td>Do wykonania żądanego pobrania danych i analizy AI</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Nie korzystamy z haseł.</strong> Uwierzytelnianie odbywa się wyłącznie za pomocą jednorazowych tokenów e-mail typu „magic link” (ważnych krótki, ograniczony czas) oraz wynikającego z nich ciasteczka sesyjnego. Nigdy nie prosimy o hasło ani go nie przechowujemy.</p>
+<h3 id="data-collected-automatically">3.2 Dane zbierane automatycznie</h3>
+<ul>
+<li><strong>Ciasteczko sesyjne</strong> (<code>adagent_session</code>): ciasteczko HttpOnly, Secure, SameSite=Lax zawierające losowy token sesji, używane wyłącznie do utrzymania zalogowania. Nie jest wykorzystywane do reklamy, analityki ani śledzenia między witrynami.</li>
+<li><strong>Standardowe logi serwera/sieci</strong> generowane przez naszą infrastrukturę hostingową i reverse-proxy (np. adres IP, znacznik czasu, żądany adres URL, user agent) dla celów bezpieczeństwa, zapobiegania nadużyciom i rozwiązywania problemów.</li>
+{% if settings.tracking_enabled %}<li><strong>Ciasteczka reklamowe/analityczne</strong> (<code>Google Ads</code>{% if settings.GA4_MEASUREMENT_ID %} oraz <code>Google Analytics (GA4)</code>{% endif %}) — ustawiane wyłącznie po kliknięciu „Akceptuję” w banerze cookies, lub — w przypadku krótkiego, bezciasteczkowego sygnału modelowania konwersji — {{ "zawsze" if settings.GOOGLE_CONSENT_ADVANCED else "wcale przed wyrażeniem zgody" }}. Patrz punkt 8.</li>{% endif %}
+</ul>
+<h3 id="payment-data">3.3 Dane płatnicze</h3>
+<p>Jeśli subskrybujesz AdAgent Pro, dane Twojej karty płatniczej są zbierane i przetwarzane <strong>wyłącznie przez Stripe, Inc.</strong> za pośrednictwem Stripe Checkout. <strong>AdAgent nigdy nie otrzymuje, nie przesyła ani nie przechowuje numeru Twojej karty, kodu CVV ani innych danych karty.</strong> Przechowujemy wyłącznie identyfikatory wygenerowane przez Stripe, niezbędne do administrowania Twoją subskrypcją (identyfikator klienta Stripe, identyfikator subskrypcji, identyfikator ceny/planu oraz status subskrypcji), a także adres e-mail powiązany z subskrypcją.</p>
+<h3 id="third-party-listing-data-data-about-people-other-than-you">3.4 Dane ogłoszeń osób trzecich (dane osób innych niż Ty)</h3>
+<p>Podstawową funkcją AdAgent jest pobieranie <strong>publicznie dostępnych stron ogłoszeń</strong> z linków przesłanych przez Ciebie <strong>wyłącznie w domenach olx.pl, otomoto.pl i otodom.pl</strong> — Usługa technicznie odmawia przetwarzania linków z jakiejkolwiek innej domeny. Gdy przesyłasz link do wyszukiwania lub ogłoszenia, automatycznie wyodrębniamy:</p>
+<ul>
+<li>Tytuł ogłoszenia, cenę, tekst opisu, tabelę parametrów/specyfikacji oraz ogólne pole lokalizacji (zazwyczaj miasto lub dzielnica, zgodnie z publikacją w ogłoszeniu — nie adres domowy sprzedawcy);</li>
+<li>W niektórych przypadkach szerszy, widoczny tekst strony ogłoszenia, wykorzystywany jako mechanizm zapasowy, aby nasza ekstrakcja mogła pobrać pola różniące się w zależności od układu lub języka danego serwisu.</li>
+</ul>
+<p>Treść ta <strong>może incydentalnie zawierać imię i nazwisko, numer telefonu lub inne dane kontaktowe sprzedawcy, jeśli sprzedawca sam zdecydował się je wpisać w publiczny tekst ogłoszenia</strong>. AdAgent nie klika przycisków „pokaż numer telefonu”, nie zeskrobuje stron profili sprzedawców ani nie podejmuje prób wzbogacenia, krzyżowego powiązania lub zbudowania profilu żadnego sprzedawcy. Dane są wyodrębniane wyłącznie w celu wygenerowania żądanego przez Ciebie raportu i nie są wykorzystywane na korzyść jakiejkolwiek innej osoby.</p>
+<p><strong>Podstawa prawna tego przetwarzania na gruncie RODO:</strong> dane te zostały publicznie udostępnione przez sprzedawcę na serwisie źródłowym (art. 6 ust. 1 lit. f — prawnie uzasadniony interes w prowadzeniu narzędzia do porównywania ogłoszeń na danych, które osoba, której dane dotyczą, sama zdecydowała się opublikować, wyważony wobec minimalnej ingerencji: brak pobierania danych ukrytych/zastrzeżonych, brak odsprzedaży, brak profilowania). W zakresie, w jakim AdAgent działa na Twoje polecenie w celu analizy wybranych przez Ciebie ogłoszeń, działamy również jako Twój <strong>podmiot przetwarzający</strong> w odniesieniu do tych danych, przy czym Ty pozostajesz (nieformalnym) administratorem swoich własnych decyzji dotyczących wyszukiwania.</p>
+<h3 id="data-sent-to-our-ai-provider">3.5 Dane przekazywane naszemu dostawcy AI</h3>
+<p>Treść ogłoszenia opisana w punkcie 3.4 (tytuł, cena, opis, lokalizacja, parametry i istotny tekst strony) jest przekazywana do <strong>OpenAI</strong> (za pośrednictwem API OpenAI) w celu wygenerowania oceny AI, analizy czerwonych flag oraz podsumowania, o które prosiłeś/aś. Szczegóły dotyczące tego podmiotu przetwarzającego znajdują się w punkcie 6.</p>
+<hr />
+<h2 id="how-we-use-personal-data">4. W jaki sposób wykorzystujemy dane osobowe</h2>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Cel</th>
+<th>Wykorzystywane dane</th>
+<th>Podstawa prawna (RODO)</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Świadczenie podstawowej usługi pobierania danych/analizy/raportowania</td>
+<td>Przesłany link, pobrana treść ogłoszenia, wynik AI</td>
+<td>Umowa (art. 6 ust. 1 lit. b) / prawnie uzasadniony interes dla danych osób trzecich (art. 6 ust. 1 lit. f)</td>
+</tr>
+<tr class="even">
+<td>Uwierzytelnianie bezhasłowe</td>
+<td>E-mail, token magic-link, token sesji</td>
+<td>Umowa (art. 6 ust. 1 lit. b)</td>
+</tr>
+<tr class="odd">
+<td>Rozliczenia subskrypcji i zarządzanie kontem</td>
+<td>E-mail, identyfikatory klienta/subskrypcji Stripe</td>
+<td>Umowa (art. 6 ust. 1 lit. b)</td>
+</tr>
+<tr class="even">
+<td>Wysyłka powiadomień o gotowości raportu</td>
+<td>E-mail (tylko jeśli wyraziłeś/aś zgodę dla danego raportu)</td>
+<td>Zgoda (art. 6 ust. 1 lit. a)</td>
+</tr>
+<tr class="odd">
+<td>Bezpieczeństwo, zapobieganie oszustwom/nadużyciom, integralność usługi</td>
+<td>Logi serwera, adres IP</td>
+<td>Prawnie uzasadniony interes (art. 6 ust. 1 lit. f)</td>
+</tr>
+<tr class="even">
+<td>Zgodność z prawem (podatki, rachunkowość)</td>
+<td>Dokumentacja rozliczeniowa</td>
+<td>Obowiązek prawny (art. 6 ust. 1 lit. c)</td>
+</tr>
+{% if settings.tracking_enabled %}<tr class="odd">
+<td>Pomiar skuteczności reklam (które reklamy doprowadziły do subskrypcji) oraz, jeśli włączone, analityka użytkowania serwisu</td>
+<td>Identyfikator kliknięcia reklamy / zdarzenie konwersji, odsłony stron, wartość subskrypcji — bez treści ogłoszeń i bez danych sprzedawców będących osobami trzecimi</td>
+<td>Zgoda (art. 6 ust. 1 lit. a), wyrażona za pośrednictwem banera cookies</td>
+</tr>{% endif %}
+</tbody>
+</table>
+<p>Nie budujemy profili marketingowych na podstawie danych sprzedawców będących osobami trzecimi i nie sprzedajemy danych osobowych żadnej osobie trzeciej w zwykłym komercyjnym sensie ani w rozumieniu „sprzedaży”/„udostępniania” zdefiniowanym w CCPA/CPRA.{% if settings.tracking_enabled %} Korzystamy z Google Ads{% if settings.GA4_MEASUREMENT_ID %} oraz Google Analytics{% endif %} w celu pomiaru skuteczności naszej własnej reklamy, zgodnie z opisem w punkcie 8, ale wyłącznie za Twoją zgodą.{% else %} Obecnie nie wykorzystujemy Twoich danych do celów reklamowych.{% endif %}</p>
+<hr />
+<h2 id="data-retention">5. Przechowywanie danych</h2>
+<ul>
+<li><strong>Raporty</strong> (przesłany przez Ciebie link, pobrana treść ogłoszenia oraz wynik analizy AI) są przechowywane w naszej produkcyjnej bazie danych oraz, dla niektórych rodzajów raportów, jako wygenerowane pliki HTML na naszym serwerze, abyś Ty (a w przypadku anonimowych/niezalogowanych wyszukiwań — każdy posiadający niemożliwy do odgadnięcia link do raportu) mógł/mogła do nich wracać. <strong>Obecnie przechowujemy raporty bezterminowo, chyba że zażądasz ich usunięcia</strong> — obecnie nie ma automatycznego, czasowego usuwania treści raportów. Jeśli chcesz, aby raport (w tym wszelkie zawarte w nim dane ogłoszeń osób trzecich) został usunięty, skontaktuj się z nami pod adresem wskazanym w punkcie 1, a usuniemy go ręcznie.</li>
+<li><strong>Dane konta</strong> (e-mail, identyfikatory Stripe) są przechowywane przez okres istnienia Twojego konta, a następnie przez okres wymagany przez polskie prawo podatkowo-rachunkowe po zamknięciu konta (zazwyczaj 5 lat dla dokumentacji związanej z fakturowaniem).</li>
+<li><strong>Tokeny sesji</strong> wygasają automatycznie po 7 dniach od wystawienia (lub po wylogowaniu) i są okresowo usuwane.</li>
+<li><strong>Tokeny magic-link</strong> są jednorazowego użytku i wygasają po 15 minutach; wykorzystane/wygasłe tokeny są przechowywane krótko w celach audytowych.</li>
+<li>Pracujemy nad wprowadzeniem krótszych, zautomatyzowanych okresów przechowywania danych raportów i zaktualizujemy niniejszą Politykę, gdy zostanie to wdrożone. Jeśli jesteś osobą, której dane dotyczą (w tym sprzedawcą będącym osobą trzecią) i chcesz, aby treść ogłoszenia na Twój temat została usunięta wcześniej, patrz punkt 9.</li>
+</ul>
+<hr />
+<h2 id="who-we-share-data-with-sub-processors-recipients">6. Z kim udostępniamy dane (podmioty przetwarzające / odbiorcy)</h2>
+<p>Nie sprzedajemy danych osobowych. Udostępniamy dane wyłącznie dostawcom usług niezbędnym do działania AdAgent, z których każdy działa na podstawie własnych warunków przetwarzania danych:</p>
+<table>
+<colgroup>
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Podmiot przetwarzający</th>
+<th>Rola</th>
+<th>Udostępniane dane</th>
+<th>Lokalizacja</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>OpenAI, L.L.C.</strong></td>
+<td>Analiza treści ogłoszeń przez AI (obecnie wykorzystywane modele: rodzina GPT-5 OpenAI)</td>
+<td>Pobrany tekst ogłoszenia (tytuł, cena, opis, parametry, lokalizacja, istotny tekst strony)</td>
+<td>Stany Zjednoczone (transfer międzynarodowy — patrz punkt 7)</td>
+</tr>
+<tr class="even">
+<td><strong>Stripe, Inc.</strong></td>
+<td>Obsługa płatności, rozliczenia subskrypcji, fakturowanie</td>
+<td>Adres e-mail; dane karty/płatności (zbierane bezpośrednio przez Stripe, nigdy przez nas)</td>
+<td>Stany Zjednoczone / globalnie (transfer międzynarodowy — patrz punkt 7)</td>
+</tr>
+<tr class="odd">
+<td><strong>Amazon Web Services (SES)</strong> i/lub własny serwer przekaźnika SMTP</td>
+<td>Dostarczanie wiadomości transakcyjnych (linki logowania, potwierdzenia subskrypcji, powiadomienia o gotowości raportu)</td>
+<td>Adres e-mail odbiorcy, treść wiadomości</td>
+<td>AWS SES: UE (Irlandia, <code>eu-west-1</code>); własny przekaźnik: ten sam serwer co Usługa (Polska/Niemcy, Hetzner)</td>
+</tr>
+<tr class="even">
+<td><strong>Hetzner Online GmbH</strong> (lub następca w roli dostawcy infrastruktury)</td>
+<td>Hosting serwera dla aplikacji, bazy danych i przechowywania raportów</td>
+<td>Wszystkie dane opisane powyżej, przechowywane</td>
+<td>Niemcy (UE)</td>
+</tr>
+<tr class="odd">
+<td>Dostawca proxy rezydencjalnego/ISP (jeśli i gdy skonfigurowany)</td>
+<td>Kieruje ruch wychodzący do pobierania danych, aby uniknąć blokad antybotowych serwisu</td>
+<td>Proxy dotyczy wyłącznie żądania wychodzącego do serwisu z ogłoszeniem; żadne dane osobowe użytkownika nie są przekazywane dostawcy proxy poza docelowym adresem URL</td>
+<td>Zależnie od dostawcy</td>
+</tr>
+{% if settings.tracking_enabled %}<tr class="even">
+<td><strong>Google Ireland Limited</strong> (Google Ads{% if settings.GA4_MEASUREMENT_ID %}, Google Analytics{% endif %})</td>
+<td>Pomiar, które reklamy doprowadziły do wizyty lub subskrypcji{% if settings.GA4_MEASUREMENT_ID %}; podstawowa analityka użytkowania serwisu{% endif %} — wyłącznie za Twoją zgodą (punkt 8)</td>
+<td>Identyfikatory reklamowe/ciasteczka, zdarzenia konwersji (np. „zasubskrybowano”, wartość, waluta), odsłony stron. Żadne treści ogłoszeń ani dane sprzedawców będących osobami trzecimi nie są nigdy przekazywane do Google.</td>
+<td>UE/EOG i Stany Zjednoczone (transfer międzynarodowy — patrz punkt 7)</td>
+</tr>{% endif %}
+</tbody>
+</table>
+<p>Możemy również ujawnić dane, gdy jest to wymagane przez prawo, nakaz sądowy lub w celu ochrony naszych praw, a także w związku z fuzją, przejęciem lub sprzedażą aktywów (z powiadomieniem zainteresowanych użytkowników tam, gdzie jest to wymagane).</p>
+<hr />
+<h2 id="international-data-transfers">7. Międzynarodowe transfery danych</h2>
+<p>Niektórzy podmioty przetwarzające (w szczególności OpenAI i Stripe{% if settings.tracking_enabled %}, a także Google w zakresie reklamy/analityki{% endif %}) mają siedzibę w Stanach Zjednoczonych lub przekazują tam dane. W przypadku przekazywania danych osobowych poza Europejski Obszar Gospodarczy opieramy się na zabezpieczeniach dostępnych na gruncie RODO, które obecnie obejmują Standardowe Klauzule Umowne i/lub uczestnictwo odbiorcy we właściwych ramach adekwatności (np. ramach EU-U.S. Data Privacy Framework, jeśli odbiorca jest certyfikowany). Możesz poprosić o więcej informacji na temat tych zabezpieczeń, kontaktując się z nami.</p>
+<hr />
+<h2 id="cookies">8. Pliki cookie</h2>
+<p>AdAgent wykorzystuje jedno niezbędne ciasteczko:</p>
+<ul>
+<li><code>adagent_session</code> — HttpOnly, Secure, SameSite=Lax. Bezwzględnie niezbędne do utrzymania zalogowania. Nie można go wyłączyć bez utraty możliwości logowania i jest ono zwolnione z obowiązku uzyskania zgody na mocy przepisów ePrivacy UE.</li>
+</ul>
+{% if settings.tracking_enabled %}<p>Korzystamy również z Google Ads{% if settings.GA4_MEASUREMENT_ID %} oraz Google Analytics (GA4){% endif %}, aby zmierzyć, w jaki sposób odwiedzający trafiają do Usługi za pośrednictwem naszej własnej reklamy{% if settings.GA4_MEASUREMENT_ID %} oraz aby zrozumieć podstawowe sposoby korzystania z serwisu{% endif %}. Są to ciasteczka <strong>nieniezbędne</strong> i wymagają Twojej zgody:</p>
+<ul>
+<li>Podczas pierwszej wizyty baner cookies prosi Cię o wybór: <strong>Akceptuję</strong> lub <strong>Odrzuć</strong>.</li>
+<li>Jeśli wybierzesz <strong>Odrzuć</strong> (lub nie podejmiesz żadnej akcji), żadne ciasteczko reklamowe/analityczne nie zostanie ustawione{% if settings.GOOGLE_CONSENT_ADVANCED %}, a do Google zostanie wysłany wyłącznie bezciasteczkowy sygnał „modelowania konwersji” w trybie zgody — bez ciasteczka i bez identyfikatora reklamowego{% endif %}.</li>
+<li>Jeśli wybierzesz <strong>Akceptuję</strong>, ustawiane są ciasteczka Google Ads{% if settings.GA4_MEASUREMENT_ID %}/Analytics{% endif %}, wykorzystywane do przypisywania subskrypcji do kliknięć w reklamy{% if settings.GA4_MEASUREMENT_ID %} oraz do pomiaru użytkowania serwisu{% endif %}, zgodnie z własną polityką prywatności Google oraz, tam gdzie ma to zastosowanie, jej unijną polityką zgody użytkownika końcowego.</li>
+<li>Możesz wycofać zgodę w dowolnym momencie za pomocą linku „Ustawienia cookies” w stopce strony, który ponownie otwiera baner i czyści Twój poprzedni wybór.</li>
+</ul>
+{% else %}<p>Obecnie nie wykorzystujemy ciasteczek analitycznych, reklamowych ani pikseli śledzących osób trzecich. Jeśli w przyszłości dodamy ciasteczka nieniezbędne (np. analityczne lub reklamowe), zaktualizujemy niniejszą Politykę i wdrożymy odpowiedni mechanizm zgody.</p>{% endif %}
+<hr />
+<h2 id="your-rights">9. Twoje prawa</h2>
+<h3 id="eueea-and-uk-residents-gdpr">9.1 Mieszkańcy UE/EOG i Wielkiej Brytanii (RODO)</h3>
+<p>Masz prawo do: dostępu do swoich danych; sprostowania nieprawidłowych danych; usunięcia swoich danych („prawo do bycia zapomnianym”); ograniczenia przetwarzania; przenoszenia danych; sprzeciwu wobec przetwarzania opartego na prawnie uzasadnionym interesie; oraz wycofania zgody w dowolnym momencie (bez wpływu na wcześniejsze zgodne z prawem przetwarzanie). Aby skorzystać z któregokolwiek z tych praw, skontaktuj się z nami pod adresem wskazanym w punkcie 1. Masz również prawo wnieść skargę do polskiego organu nadzorczego — <strong>Urzędu Ochrony Danych Osobowych (UODO)</strong> — lub do organu nadzorczego we własnym państwie członkowskim UE.</p>
+<p>Dotyczy to również <strong>osób trzecich, których dane dotyczą</strong> (np. sprzedawcy, którego treść ogłoszenia została przeanalizowana) — jeśli jesteś taką osobą i chcesz, aby treść ogłoszenia na Twój temat została usunięta z przechowywanego raportu AdAgent, skontaktuj się z nami, podając link do raportu lub adres URL ogłoszenia, a usuniemy tę treść.</p>
+<h3 id="california-residents-ccpacpra">9.2 Mieszkańcy Kalifornii (CCPA/CPRA)</h3>
+<p>Mieszkańcy Kalifornii mają prawo wiedzieć, jakie dane osobowe zbieramy, wykorzystujemy i ujawniamy; żądać ich usunięcia; poprawiać nieprawidłowe informacje; oraz zrezygnować ze „sprzedaży” lub „udostępniania” danych osobowych. <strong>Nie sprzedajemy ani nie udostępniamy danych osobowych</strong> w rozumieniu tych terminów zdefiniowanych w CCPA/CPRA, więc mechanizm rezygnacji nie jest wymagany, jednak nadal możesz kierować żądania dostępu/usunięcia na powyższy adres kontaktowy. Nie będziemy Cię dyskryminować za korzystanie z tych praw.</p>
+<h3 id="canada-pipeda">9.3 Kanada (PIPEDA)</h3>
+<p>Użytkownicy z Kanady mają prawo dostępu do przechowywanych przez nas danych osobowych na ich temat, kwestionowania ich dokładności oraz żądania ich poprawienia. Zbieramy, wykorzystujemy i ujawniamy dane osobowe wyłącznie w celach opisanych w niniejszej Polityce, za Twoją zgodą tam, gdzie jest wymagana, i przechowujemy je jedynie tak długo, jak jest to niezbędne dla tych celów. Skargi możesz kierować do Biura Komisarza ds. Prywatności Kanady, jeśli uważasz, że nie rozpatrzyliśmy Twoich obaw w sposób adekwatny.</p>
+<h3 id="australia-privacy-act-1988-apps">9.4 Australia (Privacy Act 1988 / APPs)</h3>
+<p>Przetwarzamy dane osobowe użytkowników z Australii zgodnie z Australijskimi Zasadami Prywatności (Australian Privacy Principles), w tym zasadami przejrzystości, ograniczenia celu i bezpieczeństwa danych. Użytkownicy z Australii mogą żądać dostępu do swoich danych osobowych i ich poprawienia za pośrednictwem powyższego adresu kontaktowego oraz mogą złożyć skargę do Biura Australijskiego Komisarza ds. Informacji (OAIC), jeśli nasza odpowiedź nie będzie satysfakcjonująca.</p>
+<h3 id="response-time">9.5 Czas odpowiedzi</h3>
+<p>Dążymy do odpowiedzi na zweryfikowane żądania w ciągu 30 dni (lub krótszego okresu wymaganego przez obowiązujące prawo).</p>
+<hr />
+<h2 id="data-security">10. Bezpieczeństwo danych</h2>
+<p>Stosujemy standardowe w branży zabezpieczenia, w tym HTTPS/TLS podczas przesyłania danych, ciasteczka sesyjne HttpOnly/Secure, dostęp do bazy danych ograniczony wyłącznie do aplikacji oraz infrastrukturę Stripe zgodną ze standardem PCI dla danych płatniczych (która nigdy nie dociera do naszych serwerów). Żadna usługa internetowa nie może zagwarantować absolutnego bezpieczeństwa i nie możemy zagwarantować bezpieczeństwa danych przesyłanych do nas.</p>
+<hr />
+<h2 id="childrens-privacy">11. Prywatność dzieci</h2>
+<p>AdAgent nie jest kierowany do osób poniżej 16. roku życia (lub wyższego wieku zgody cyfrowej obowiązującego w danej jurysdykcji) i nie jest im świadomie oferowany. Nie zbieramy świadomie danych osobowych dzieci. Jeśli uważasz, że dziecko przekazało nam swoje dane osobowe, skontaktuj się z nami, a usuniemy je.</p>
+<hr />
+<h2 id="third-party-marketplaces-are-not-covered-by-this-policy">12. Serwisy osób trzecich nie są objęte niniejszą Polityką</h2>
+<p>AdAgent odczytuje publicznie dostępne strony OLX, Otomoto i Otodom na Twoje polecenie. <strong>Nie jesteśmy powiązani z OLX Group, Naspers, Otomoto ani Otodom, nie jesteśmy przez nie rekomendowani, sponsorowani ani nie jesteśmy ich partnerem</strong>, a niniejsza Polityka nie reguluje sposobu, w jaki przetwarzają one dane Twoje — ani żadnego sprzedawcy. Zapoznaj się z własnymi politykami prywatności tych platform, aby dowiedzieć się, jak przetwarzają dane.</p>
+<hr />
+<h2 id="changes-to-this-policy">13. Zmiany niniejszej Polityki</h2>
+<p>Możemy od czasu do czasu aktualizować niniejszą Politykę. Istotne zmiany zostaną odzwierciedlone poprzez aktualizację daty „Ostatnia aktualizacja”, a tam, gdzie wymaga tego prawo, przekażemy dodatkowe powiadomienie (np. e-mailem do zarejestrowanych użytkowników).</p>
+<hr />
+<h2 id="contact">14. Kontakt</h2>
+<p><strong>Dmytro Mosnenko</strong><br />
+Rajmunda Rembielińskiego 16, 93-575 Łódź, Polska<br />
+NIP: 7272885849 · REGON: 540831059<br />
+E-mail: <strong>privacy-adagent@dimosense.com</strong></p>
+{% else %}
+<h1>AdAgent — Privacy Policy</h1></div>
     <p class="legal-updated">Last updated: 2026-09-24</p>
 <p>This Privacy Policy explains how AdAgent (“<strong>AdAgent</strong>,” “<strong>we</strong>,” “<strong>us</strong>”) processes personal data when you use the service at <strong>adagent.dimosense.com</strong> (the “<strong>Service</strong>”).</p>
 <hr />
@@ -14,7 +258,6 @@
 Sole proprietorship (jednoosobowa działalność gospodarcza, JDG)<br />
 Business address: Rajmunda Rembielińskiego 16, 93-575 Łódź, Poland<br />
 NIP: 7272885849 · REGON: 540831059<br />
-Electronic delivery address (ADE): AE:PL-87094-28662-SVWTJ-16<br />
 Contact for privacy matters: <strong>privacy-adagent@dimosense.com</strong></p>
 </blockquote>
 <p>For the purposes of the EU General Data Protection Regulation (“<strong>GDPR</strong>”), Dmytro Mosnenko is the <strong>data controller</strong> for personal data processed through the Service, and a <strong>data processor</strong> with respect to third-party listing data you cause the Service to collect on your behalf (see Section 4).</p>
@@ -60,8 +303,9 @@ Contact for privacy matters: <strong>privacy-adagent@dimosense.com</strong></p>
 <p><strong>We do not use passwords.</strong> Authentication is entirely via one-time “magic link” email tokens (valid for a short, limited time) and a resulting session cookie. We never ask for or store a password.</p>
 <h3 id="data-collected-automatically">3.2 Data collected automatically</h3>
 <ul>
-<li><strong>Session cookie</strong> (<code>adagent_session</code>): an HttpOnly, Secure, SameSite=Lax cookie containing a random session token, used solely to keep you signed in. It is not used for advertising, analytics, or cross-site tracking, and we do not use third-party analytics or advertising cookies/pixels on the Service.</li>
+<li><strong>Session cookie</strong> (<code>adagent_session</code>): an HttpOnly, Secure, SameSite=Lax cookie containing a random session token, used solely to keep you signed in. It is not used for advertising, analytics, or cross-site tracking.</li>
 <li><strong>Standard server/web logs</strong> generated by our hosting and reverse-proxy infrastructure (e.g., IP address, timestamp, requested URL, user agent) for security, abuse prevention, and troubleshooting.</li>
+{% if settings.tracking_enabled %}<li><strong>Advertising/analytics cookies</strong> (<code>Google Ads</code>{% if settings.GA4_MEASUREMENT_ID %} and <code>Google Analytics (GA4)</code>{% endif %}) — set only after you click “Accept” in the cookie banner, or, for a short cookieless conversion-modelling ping, {{ "always" if settings.GOOGLE_CONSENT_ADVANCED else "not at all before consent" }}. See Section 8.</li>{% endif %}
 </ul>
 <h3 id="payment-data">3.3 Payment data</h3>
 <p>If you subscribe to AdAgent Pro, your payment card details are collected and processed <strong>entirely by Stripe, Inc.</strong> through Stripe Checkout. <strong>AdAgent never receives, transmits, or stores your card number, CVV, or other card data.</strong> We store only the Stripe-generated identifiers necessary to administer your subscription (Stripe customer ID, subscription ID, price/plan ID, and subscription status), plus the email address associated with the subscription.</p>
@@ -121,9 +365,14 @@ Contact for privacy matters: <strong>privacy-adagent@dimosense.com</strong></p>
 <td>Billing records</td>
 <td>Legal obligation (Art. 6(1)(c))</td>
 </tr>
+{% if settings.tracking_enabled %}<tr class="odd">
+<td>Measuring advertising performance (which ads led to a subscription) and, if enabled, site usage analytics</td>
+<td>Advertising click ID / conversion event, page views, subscription value — no listing content and no third-party seller data</td>
+<td>Consent (Art. 6(1)(a)), given via the cookie banner</td>
+</tr>{% endif %}
 </tbody>
 </table>
-<p>We do <strong>not</strong> use your data for advertising, do <strong>not</strong> build marketing profiles from third-party seller data, and do <strong>not</strong> sell personal data to any third party, in the ordinary commercial sense or as “sale”/“sharing” is defined under the CCPA/CPRA.</p>
+<p>We do <strong>not</strong> build marketing profiles from third-party seller data, and do <strong>not</strong> sell personal data to any third party, in the ordinary commercial sense or as “sale”/“sharing” is defined under the CCPA/CPRA.{% if settings.tracking_enabled %} We do use Google Ads{% if settings.GA4_MEASUREMENT_ID %} and Google Analytics{% endif %} to measure the performance of our own advertising, as described in Section 8, but only with your consent.{% else %} We do not currently use your data for advertising.{% endif %}</p>
 <hr />
 <h2 id="data-retention">5. Data retention</h2>
 <ul>
@@ -182,19 +431,32 @@ Contact for privacy matters: <strong>privacy-adagent@dimosense.com</strong></p>
 <td>Only the outbound request to the listing site is proxied; no user personal data is sent to the proxy provider beyond the target URL</td>
 <td>Varies by provider</td>
 </tr>
+{% if settings.tracking_enabled %}<tr class="even">
+<td><strong>Google Ireland Limited</strong> (Google Ads{% if settings.GA4_MEASUREMENT_ID %}, Google Analytics{% endif %})</td>
+<td>Measuring which ads led to a visit or subscription{% if settings.GA4_MEASUREMENT_ID %}; basic site-usage analytics{% endif %} — only with your consent (Section 8)</td>
+<td>Advertising identifiers/cookies, conversion events (e.g., “subscribed”, value, currency), page views. No listing content or third-party seller data is ever sent to Google.</td>
+<td>EU/EEA and United States (international transfer — see Section 7)</td>
+</tr>{% endif %}
 </tbody>
 </table>
 <p>We may also disclose data where required by law, court order, or to protect our legal rights, and in connection with a merger, acquisition, or sale of assets (with notice to affected users where required).</p>
 <hr />
 <h2 id="international-data-transfers">7. International data transfers</h2>
-<p>Some sub-processors (notably OpenAI and Stripe) are based in or transfer data to the United States. Where we transfer personal data outside the European Economic Area, we rely on the safeguards available under GDPR, which currently include Standard Contractual Clauses and/or the recipient’s participation in an applicable adequacy framework (e.g., the EU-U.S. Data Privacy Framework, where the recipient is certified). You may request more information about these safeguards by contacting us.</p>
+<p>Some sub-processors (notably OpenAI and Stripe{% if settings.tracking_enabled %}, and Google for advertising/analytics{% endif %}) are based in or transfer data to the United States. Where we transfer personal data outside the European Economic Area, we rely on the safeguards available under GDPR, which currently include Standard Contractual Clauses and/or the recipient’s participation in an applicable adequacy framework (e.g., the EU-U.S. Data Privacy Framework, where the recipient is certified). You may request more information about these safeguards by contacting us.</p>
 <hr />
 <h2 id="cookies">8. Cookies</h2>
-<p>AdAgent uses a single essential cookie:</p>
+<p>AdAgent uses one essential cookie:</p>
 <ul>
-<li><code>adagent_session</code> — HttpOnly, Secure, SameSite=Lax. Strictly necessary to keep you signed in. Cannot be disabled without breaking sign-in.</li>
+<li><code>adagent_session</code> — HttpOnly, Secure, SameSite=Lax. Strictly necessary to keep you signed in. Cannot be disabled without breaking sign-in, and is exempt from consent requirements under the EU ePrivacy rules.</li>
 </ul>
-<p>We do not use analytics cookies, advertising cookies, or third-party tracking pixels. Because this cookie is strictly necessary for the Service to function, it is exempt from consent requirements under the EU ePrivacy rules, and no cookie banner is required for it alone. If we add non-essential cookies (e.g., analytics) in the future, we will update this Policy and implement appropriate consent.</p>
+{% if settings.tracking_enabled %}<p>We also use Google Ads{% if settings.GA4_MEASUREMENT_ID %} and Google Analytics (GA4){% endif %} to measure how visitors reach the Service through our own advertising{% if settings.GA4_MEASUREMENT_ID %} and to understand basic site usage{% endif %}. These are <strong>non-essential</strong> and require your consent:</p>
+<ul>
+<li>On your first visit, a cookie banner asks you to <strong>Accept</strong> or <strong>Reject</strong>.</li>
+<li>If you <strong>Reject</strong> (or take no action), no advertising/analytics cookie is set{% if settings.GOOGLE_CONSENT_ADVANCED %}, and only a cookieless, consent-mode “conversion modelling” ping — carrying no cookie and no advertising identifier — is sent to Google{% endif %}.</li>
+<li>If you <strong>Accept</strong>, Google Ads{% if settings.GA4_MEASUREMENT_ID %}/Analytics{% endif %} cookies are set and used to attribute subscriptions to ad clicks{% if settings.GA4_MEASUREMENT_ID %} and to measure site usage{% endif %}, consistent with Google’s own privacy policy and, where applicable, its EU end-user consent policy.</li>
+<li>You can withdraw consent at any time via the “Cookie settings” link in the site footer, which re-opens the banner and clears your previous choice.</li>
+</ul>
+{% else %}<p>We do not currently use analytics cookies, advertising cookies, or third-party tracking pixels. If we add non-essential cookies (e.g., analytics or advertising) in the future, we will update this Policy and implement appropriate consent.</p>{% endif %}
 <hr />
 <h2 id="your-rights">9. Your rights</h2>
 <h3 id="eueea-and-uk-residents-gdpr">9.1 EU/EEA and UK residents (GDPR)</h3>
@@ -225,8 +487,8 @@ Contact for privacy matters: <strong>privacy-adagent@dimosense.com</strong></p>
 <p><strong>Dmytro Mosnenko</strong><br />
 Rajmunda Rembielińskiego 16, 93-575 Łódź, Poland<br />
 NIP: 7272885849 · REGON: 540831059<br />
-Electronic delivery address: AE:PL-87094-28662-SVWTJ-16<br />
 Email: <strong>privacy-adagent@dimosense.com</strong></p>
+{% endif %}
   </div>
 </div>
 {% endblock %}

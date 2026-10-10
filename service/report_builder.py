@@ -7,6 +7,7 @@ from .ai_client import parse_json_safe
 from .logger import get_logger
 
 from .config import settings
+from .i18n import translator
 logger = get_logger(__name__)
 
 _REF_PAIR_RE = re.compile(r"\{\{ref:([^}]*)\}\}(.*?)\{\{/ref\}\}", re.S)
@@ -428,6 +429,7 @@ def build_html_report(
     report_id: str,
     ads_found: int,
     is_limited: bool,
+    ui_lang: str = "en",
     template_dir: str = "templates",
     template_file: str = "report.html.j2",
 ) -> str:
@@ -455,12 +457,15 @@ def build_html_report(
     recommended_links = _build_recommended_links(summary.get("recommended_ads"), ads)
 
     env = Environment(loader=FileSystemLoader(template_dir), autoescape=True)
+    env.globals["t"] = translator(ui_lang)
     env.filters["thousands"] = lambda v: f"{int(v):,}" if v else ""
 
     ctx = {
         "report_id":      report_id,
         "adagent_url":    settings.APP_BASE_URL,
-        "subscribe_url":  "/subscribe",
+        "subscribe_url":  "/subscribe" + ("?lang=pl" if ui_lang == "pl" else ""),
+        "html_lang":      ui_lang,
+        "price_label":    settings.price_label(ui_lang),
         "filter_url":     filter_url,
         "filter_site":    _site_label(filter_url),
         "generated_at":   datetime.now().strftime("%Y-%m-%d %H:%M"),

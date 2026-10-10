@@ -1,7 +1,7 @@
 from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Optional
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .models import User, Session, MagicLink, Subscription, Report
@@ -170,6 +170,22 @@ async def create_report(db: AsyncSession, **kwargs) -> Report:
     await db.commit()
     await db.refresh(r)
     return r
+
+
+async def count_free_reports_since(
+    db: AsyncSession, since: datetime, client_hash: Optional[str] = None,
+) -> int:
+    """
+    Free-tier (is_limited) reports created since `since` — for one client when
+    `client_hash` is given, otherwise across all clients. Used by the daily
+    abuse / budget guard in /analyze. `since` is naive UTC like created_at.
+    """
+    q = select(func.count()).select_from(Report).where(
+        Report.is_limited.is_(True), Report.created_at >= since,
+    )
+    if client_hash:
+        q = q.where(Report.client_hash == client_hash)
+    return int((await db.execute(q)).scalar() or 0)
 
 
 async def get_report(db: AsyncSession, report_id: str) -> Optional[Report]:

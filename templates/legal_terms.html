@@ -1,9 +1,143 @@
 {% extends "base.html" %}
-{% block title %}Terms of Service — AdAgent{% endblock %}
+{% block title %}{{ "Regulamin — AdAgent" if ui_lang == "pl" else "Terms of Service — AdAgent" }}{% endblock %}
+{% block robots %}{% endblock %}
 {% block content %}
 <div class="container">
   <div class="card legal">
-    <div class="legal-header"><h1>AdAgent — Terms of Service</h1></div>
+    <div class="legal-header">{% if ui_lang == 'pl' %}
+<h1>AdAgent — Regulamin świadczenia usług</h1></div>
+<p class="legal-updated">Ostatnia aktualizacja: 2026-09-24</p>
+<p>Niniejszy Regulamin („<strong>Regulamin</strong>”) określa zasady dostępu do i korzystania z AdAgent — zautomatyzowanej usługi analizy ogłoszeń dostępnej pod adresem <strong>adagent.dimosense.com</strong> („<strong>Usługa</strong>”). Uzyskując dostęp do Usługi lub korzystając z niej, akceptujesz niniejszy Regulamin. Jeśli się nie zgadzasz, nie korzystaj z Usługi.</p>
+<hr />
+<h2 id="who-we-are-impressum-legal-notice">1. Kim jesteśmy (Impressum / informacje prawne)</h2>
+<p>Zgodnie z obowiązującymi obowiązkami transparentności UE dla dostawców usług online (w tym wymogami ujawnienia w stylu niemieckiego TMG/DDG mającymi zastosowanie do usług oferowanych na rynek niemiecki), podajemy poniższe informacje:</p>
+<blockquote>
+<p><strong>Usługodawca:</strong> DMYTRO MOSNENKO<br />
+<strong>Forma prawna:</strong> jednoosobowa działalność gospodarcza (JDG), zarejestrowana w Polsce (CEIDG)<br />
+<strong>Adres prowadzenia działalności:</strong> Rajmunda Rembielińskiego 16, 93-575 Łódź, Polska<br />
+<strong>NIP:</strong> 7272885849<br />
+<strong>REGON:</strong> 540831059<br />
+<strong>Kontakt:</strong> <strong>support-adagent@dimosense.com</strong><br />
+<strong>Status VAT:</strong> Zarejestrowany czynny podatnik VAT (VAT UE ID: PL7272885849)</p>
+</blockquote>
+<hr />
+<h2 id="what-adagent-is">2. Czym jest AdAgent</h2>
+<p>AdAgent to <strong>narzędzie techniczne do automatyzacji</strong>. Na podstawie podanego przez Ciebie linku do wyszukiwania lub strony ogłoszenia, mieszczącego się w obsługiwanej domenie, AdAgent:</p>
+<ol type="1">
+<li>Pobiera publicznie widoczną treść tej strony (a w przypadku linków do wyników wyszukiwania — również poszczególnych stron ogłoszeń, do których prowadzą linki na tej stronie);</li>
+<li>Przesyła wyodrębniony tekst do zewnętrznego dostawcy dużego modelu językowego (LLM) w celu automatycznej analizy; oraz</li>
+<li>Przedstawia Ci wygenerowany raport, zawierający ocenę przyznaną przez AI (1–10), opisową analizę, oznaczone punkty ryzyka („czerwone flagi”) oraz — w przypadku wyszukiwań obejmujących wiele ogłoszeń — porównawcze podsumowanie/ranking.</li>
+</ol>
+<p><strong>Obsługiwane źródła.</strong> AdAgent obecnie przyjmuje i przetwarza wyłącznie linki z domen <strong>olx.pl, otomoto.pl oraz otodom.pl</strong>. Linki z innych domen są odrzucane. Możemy w dowolnym momencie dodawać lub usuwać obsługiwane źródła bez wcześniejszego powiadomienia.</p>
+<p><strong>Brak powiązania.</strong> AdAgent jest niezależnym, niepowiązanym narzędziem. <strong>Nie jesteśmy powiązani z OLX Group, Naspers, Otomoto, Otodom ani żadnym z ich podmiotów powiązanych, nie jesteśmy przez nie rekomendowani, sponsorowani ani certyfikowani, ani nie jesteśmy ich partnerem biznesowym.</strong> Wszystkie wymienione znaki towarowe należą do ich właścicieli i są używane wyłącznie w celu opisania zgodności naszego narzędzia z tymi serwisami.</p>
+<hr />
+<h2 id="your-responsibility-for-how-you-use-adagent">3. Twoja odpowiedzialność za sposób korzystania z AdAgent</h2>
+<p><strong>To Ty, a nie AdAgent, ponosisz wyłączną odpowiedzialność za zapewnienie, że Twoje korzystanie z Usługi jest zgodne z regulaminami, zasadami dopuszczalnego użytku, dyrektywami robots.txt oraz obowiązującym prawem regulującym serwis(y) osób trzecich, do których kierujesz AdAgent.</strong> AdAgent działa wyłącznie jako narzędzie techniczne, działające <strong>w Twoim imieniu i na Twoje polecenie</strong> — to Ty wybierasz, które linki przesłać, a każde zgłoszenie jest Twoją samodzielną decyzją o pobraniu i przeanalizowaniu danej publicznie dostępnej strony.</p>
+<p>Zgadzasz się nie wykorzystywać AdAgent do:</p>
+<ul>
+<li>Naruszania regulaminu OLX, Otomoto, Otodom lub jakiegokolwiek innego serwisu;</li>
+<li>Pozyskiwania danych, ponownej identyfikacji lub kontaktowania się z osobami trzecimi (np. sprzedawcami) wskazanymi lub opisanymi w zeskrobanej treści ogłoszenia, w jakimkolwiek celu innym niż Twoja własna, prywatna ocena danego ogłoszenia;</li>
+<li>Budowania konkurencyjnego zbioru danych, odsprzedaży zeskrobanej treści hurtowo lub wykorzystywania Usługi do zautomatyzowanego, wielkoskalowego pozyskiwania danych wykraczającego poza zwykłe porównywanie ofert;</li>
+<li>Przesyłania linków, do analizy których nie masz uzasadnionego powodu, lub prób wykorzystania Usługi do nękania, zniesławiania lub wyrządzania szkody jakiemukolwiek sprzedawcy lub osobie trzeciej;</li>
+<li>Prób obejścia limitów zapytań, zabezpieczeń antybotowych lub innych ograniczeń technicznych serwisów źródłowych za pośrednictwem AdAgent; lub</li>
+<li>Naruszania jakiegokolwiek obowiązującego prawa, w tym prawa ochrony danych osobowych, w związku z korzystaniem z danych osób trzecich pobieranych dla Ciebie przez AdAgent.</li>
+</ul>
+<p>Możemy zawiesić lub zakończyć Twój dostęp, jeśli mamy uzasadnione podstawy sądzić, że korzystasz z Usługi w sposób naruszający niniejszy punkt.</p>
+<hr />
+<h2 id="ai-generated-content-important-disclaimer">4. Treści generowane przez AI — ważne zastrzeżenie</h2>
+<p><strong>Oceny, oznaczenia „czerwonych flag”, podsumowania i wszelkie inne treści generowane przez AI w AdAgent są tworzone automatycznie przez zewnętrzny duży model językowy, bez weryfikacji każdego pojedynczego wyniku przez człowieka.</strong></p>
+<p>KORZYSTAJĄC Z USŁUGI, PRZYJMUJESZ DO WIADOMOŚCI I ZGADZASZ SIĘ, ŻE:</p>
+<ol type="1">
+<li><strong>Wynik działania AI ma charakter wyłącznie doradczy.</strong> Oceny, flagi i analiza opisowa odzwierciedlają interpretację zeskrobanego tekstu przez model statystyczny — są to opinie wygenerowane przez oprogramowanie, a nie zweryfikowane fakty.</li>
+<li><strong>Wynik działania AI może być niedokładny, niekompletny lub całkowicie zmyślony (tzw. „halucynacja”).</strong> Model może błędnie podać parametry, wymyślić szczegóły nieobecne w źródłowym ogłoszeniu, pominąć rzeczywiste czerwone flagi lub oznaczyć jako problem coś, co problemem nie jest.</li>
+<li><strong>Wynik działania AI NIE stanowi porady finansowej, prawnej, mechanicznej/technicznej, dotyczącej nieruchomości ani żadnej innej porady zawodowej</strong> i nie może być traktowany jako substytut niezależnych oględzin, profesjonalnej wyceny, porady prawnej, przeglądu przez wykwalifikowanego mechanika ani Twojej własnej oceny.</li>
+<li><strong>Ponosisz wyłączną odpowiedzialność za każdą decyzję, którą podejmujesz</strong> — w tym decyzję o zakupie, wynajmie, negocjacjach lub innym działaniu w oparciu o ogłoszenie — niezależnie od tego, czy decyzja ta jest wynikiem sugestii AdAgent. <strong>Nie ponosimy żadnej odpowiedzialności za skutki Twoich decyzji zakupowych lub transakcyjnych.</strong></li>
+<li><strong>Same dane ogłoszenia mogą być niedokładne, nieaktualne lub wprowadzające w błąd</strong>, ponieważ pochodzą od sprzedawcy będącego osobą trzecią, a nie od nas, i nie są przez nas weryfikowane.</li>
+</ol>
+<p>Zawsze powinieneś/powinnaś samodzielnie zweryfikować każdy istotny fakt przed poleganiem na nim oraz — tam, gdzie to zasadne — skonsultować się z wykwalifikowanym specjalistą (mechanikiem, rzeczoznawcą, prawnikiem, doradcą finansowym) przed dokonaniem zakupu lub podpisaniem umowy.</p>
+<hr />
+<h2 id="accounts-and-authentication">5. Konta i uwierzytelnianie</h2>
+<ul>
+<li>AdAgent korzysta z logowania <strong>bezhasłowego, opartego na e-mailu (link logowania — „magic link”)</strong>. Odpowiadasz za utrzymanie kontroli nad kontem e-mail powiązanym z Twoim kontem AdAgent, ponieważ każda osoba mająca dostęp do tej skrzynki może zalogować się jako Ty.</li>
+<li>Musisz podać prawidłowy adres e-mail i utrzymywać go w aktualności.</li>
+<li>Ponosisz odpowiedzialność za wszystkie działania podejmowane za pośrednictwem Twojego konta.</li>
+<li>Możemy zawiesić lub zamknąć konta wykorzystywane z naruszeniem niniejszego Regulaminu.</li>
+</ul>
+<hr />
+<h2 id="plans-billing-and-payment">6. Plany, rozliczenia i płatności</h2>
+<h3 id="free-tier">6.1 Plan darmowy</h3>
+<p>Bez płatnej subskrypcji AdAgent analizuje bezpłatnie do <strong>{{ settings.FREE_ADS_LIMIT }}</strong> pierwszych ogłoszeń znalezionych dla danego wyszukiwania.</p>
+<h3 id="adagent-pro-subscription">6.2 Subskrypcja AdAgent Pro</h3>
+<p>AdAgent Pro to płatna subskrypcja (obecnie <strong>{{ settings.PRICE_LABEL_MONTHLY }}{% if settings.PRICE_LABEL_MONTHLY_PL %} / {{ settings.PRICE_LABEL_MONTHLY_PL }} dla klientów rozliczanych w PLN{% endif %} miesięcznie</strong>, lub w innych okresach rozliczeniowych, jak wskazano przy płatności), która odblokowuje analizę wszystkich ogłoszeń w wynikach wyszukiwania oraz dostęp do pełnej historii raportów. Cena wyświetlona podczas płatności jest wiążąca i może różnić się od kwoty podanej w niniejszym dokumencie, jeśli zaktualizowaliśmy cennik od czasu ostatniej rewizji tego dokumentu.</p>
+<h3 id="payment-processing">6.3 Obsługa płatności</h3>
+<p>Wszystkie płatności są przetwarzane przez <strong>Stripe, Inc.</strong> za pośrednictwem Stripe Checkout. <strong>AdAgent nigdy nie pobiera ani nie przechowuje numeru Twojej karty ani innych danych płatniczych.</strong> Subskrybując, akceptujesz również regulamin Stripe mający zastosowanie do wybranej przez Ciebie metody płatności.</p>
+<h3 id="automatic-renewal">6.4 Automatyczne odnawianie</h3>
+<p><strong>AdAgent Pro to subskrypcja odnawiana automatycznie na koniec każdego okresu rozliczeniowego, aż do momentu anulowania.</strong> Subskrybując, wyraźnie upoważniasz Stripe do obciążania wybranej metody płatności w każdym dniu odnowienia aktualną opłatą subskrypcyjną, bez dodatkowego powiadomienia z naszej strony, z wyjątkiem sytuacji wymaganych przez prawo.</p>
+<h3 id="cancellation">6.5 Anulowanie</h3>
+<p>Możesz anulować subskrypcję <strong>w dowolnym momencie</strong> za pośrednictwem panelu rozliczeń klienta Stripe, dostępnego z poziomu Twojego konta. Anulowanie staje się skuteczne na <strong>koniec bieżącego okresu rozliczeniowego</strong> — zachowujesz dostęp do funkcji Pro do końca opłaconego okresu i nie zostaniesz obciążony/a ponownie.</p>
+<h3 id="no-refunds">6.6 Brak zwrotów</h3>
+<p><strong>Z wyjątkiem sytuacji wymaganych przez obowiązujące prawo, wszystkie opłaty subskrypcyjne są bezzwrotne</strong>, w tym za niepełne okresy rozliczeniowe, niewykorzystany dostęp lub wcześniejsze anulowanie. Nie zwracamy proporcjonalnej części opłaty w przypadku anulowania w trakcie okresu rozliczeniowego.</p>
+<h3 id="eueea-consumers-right-of-withdrawal-notice">6.7 Konsumenci z UE/EOG — informacja o prawie odstąpienia od umowy</h3>
+<p>Jeśli jesteś konsumentem mającym miejsce zamieszkania w UE/EOG, zasadniczo przysługuje Ci 14-dniowe prawo do odstąpienia od umowy zawartej na odległość dotyczącej usług cyfrowych. <strong>Klikając „Subskrybuj” i rozpoczynając korzystanie z AdAgent Pro bezpośrednio po dokonaniu płatności, wyraźnie żądasz i zgadzasz się na natychmiastowe rozpoczęcie świadczenia usługi oraz przyjmujesz do wiadomości, że tym samym tracisz ustawowe prawo odstąpienia od umowy z chwilą pełnego wykonania usługi lub z chwilą rozpoczęcia jej wykonywania za Twoją zgodą</strong>, w zakresie dopuszczalnym na mocy Dyrektywy 2011/83/UE (implementowanej w prawie polskim, w szczególności w ustawie o prawach konsumenta, oraz w innym właściwym prawie krajowym). Jeśli uważasz, że zostałeś/aś obciążony/a błędnie, skontaktuj się z nami niezwłocznie — rozpatrzymy sprawę w dobrej wierze, bez gwarancji zwrotu poza przypadkami wymaganymi przez prawo.</p>
+<h3 id="failed-payments">6.8 Nieudane płatności</h3>
+<p>Jeśli płatność za odnowienie się nie powiedzie, status Twojej subskrypcji zostanie oznaczony jako zaległy, a dostęp do funkcji Pro może zostać zawieszony do czasu uregulowania płatności, zgodnie ze standardową logiką ponawiania prób pobrania płatności stosowaną przez Stripe.</p>
+<h3 id="price-changes">6.9 Zmiany cen</h3>
+<p>Możemy zmieniać cennik subskrypcji na przyszłość. Każda zmiana ceny będzie obowiązywać od Twojego kolejnego odnowienia po wejściu zmiany w życie, a tam, gdzie wymaga tego prawo, przekażemy odpowiednie wyprzedzające powiadomienie.</p>
+<hr />
+<h2 id="report-storage-and-history">7. Przechowywanie raportów i historia</h2>
+<ul>
+<li>Wygenerowane przez Ciebie raporty (w tym wynik AI oraz, dla zalogowanych użytkowników, historia wyszukiwań) są przechowywane na naszych serwerach, abyś mógł/mogła do nich wracać, zgodnie z opisem w naszej Polityce Prywatności.</li>
+<li>Raporty wygenerowane anonimowo (bez logowania) pozostają dostępne pod ich unikalnym linkiem, który nie jest przez nas indeksowany ani udostępniany, ale nie jest chroniony w inny sposób niż poprzez posiadanie tego linku — traktuj linki do raportów jako poufne, jeśli treść danego ogłoszenia jest wrażliwa.</li>
+<li>Obecnie nie gwarantujemy żadnego minimalnego ani maksymalnego okresu przechowywania danych raportu; zapoznaj się z naszą Polityką Prywatności, aby poznać aktualną praktykę oraz sposób żądania usunięcia danych.</li>
+</ul>
+<hr />
+<h2 id="intellectual-property">8. Własność intelektualna</h2>
+<ul>
+<li>Oprogramowanie AdAgent, marka, projekt strony internetowej oraz format raportów generowanych przez AI stanowią naszą własność lub własność naszych licencjodawców.</li>
+<li>Nie rościmy sobie praw własności do bazowej treści ogłoszeń pobranej z serwisów osób trzecich, która pozostaje własnością pierwotnego sprzedawcy/platformy, zgodnie z regulaminem danej platformy.</li>
+<li>Możesz wykorzystywać raporty wygenerowane przez AdAgent do własnych celów osobistych lub wewnętrznej oceny biznesowej. Nie możesz odsprzedawać, redystrybuować hurtowo ani wykorzystywać wyników AdAgent do budowy konkurencyjnej usługi.</li>
+</ul>
+<hr />
+<h2 id="service-availability-as-is-disclaimer">9. Dostępność Usługi; zastrzeżenie „AS-IS”</h2>
+<p><strong>USŁUGA JEST ŚWIADCZONA „TAK JAK JEST” I „W MIARĘ DOSTĘPNOŚCI”, BEZ JAKICHKOLWIEK GWARANCJI, WYRAŹNYCH, DOROZUMIANYCH ANI USTAWOWYCH</strong>, w tym — w maksymalnym zakresie dopuszczalnym przez obowiązujące prawo — dorozumianych gwarancji przydatności handlowej, przydatności do określonego celu, nienaruszalności praw, dokładności lub niezawodności.</p>
+<p>Nie ograniczając powyższego, nie gwarantujemy, że:</p>
+<ul>
+<li>Usługa będzie nieprzerwana, terminowa, bezpieczna lub wolna od błędów;</li>
+<li>Dane konkretne ogłoszenie zostanie skutecznie pobrane lub przeanalizowane (serwisy osób trzecich mogą w dowolnym momencie blokować dostęp, wprowadzać limity zapytań lub zmieniać strukturę strony, powodując niepowodzenie, częściowe niepowodzenie lub niekompletność pobierania/ekstrakcji danych);</li>
+<li>Oceny, podsumowania lub flagi generowane przez AI będą dokładne, kompletne lub wolne od „halucynacji” (patrz punkt 4); lub</li>
+<li>Usługa będzie kompatybilna z jakimkolwiek konkretnym rodzajem ogłoszenia, regionem lub językiem wykraczającym poza aktualnie obsługiwane.</li>
+</ul>
+<p>Żadne z postanowień niniejszego Regulaminu nie wyłącza ani nie ogranicza odpowiedzialności, której nie można zgodnie z prawem wyłączyć lub ograniczyć na mocy obowiązującego prawa (w tym niektórych przepisów o ochronie konsumentów w UE, Australii i innych krajach), takiej jak odpowiedzialność za śmierć lub uszkodzenie ciała spowodowane zaniedbaniem, oszustwem lub umyślnym naruszeniem.</p>
+<hr />
+<h2 id="limitation-of-liability">10. Ograniczenie odpowiedzialności</h2>
+<p>W maksymalnym zakresie dopuszczalnym przez obowiązujące prawo:</p>
+<ol type="1">
+<li><strong>Nie ponosimy odpowiedzialności za jakiekolwiek szkody pośrednie, przypadkowe, szczególne, następcze, przykładowe ani karne</strong>, w tym m.in. utratę zysków, utratę danych, utratę możliwości biznesowych lub jakąkolwiek decyzję zakupową podjętą w oparciu o wynik działania AdAgent, nawet jeśli zostaliśmy poinformowani o możliwości wystąpienia takich szkód.</li>
+<li><strong>Nasza łączna odpowiedzialność wobec Ciebie z tytułu jakiegokolwiek roszczenia wynikającego z Usługi lub z nią związanego nie przekroczy wyższej z następujących kwot: (a) całkowitej kwoty zapłaconej nam przez Ciebie w ciągu 3 miesięcy poprzedzających roszczenie, lub (b) 50 USD.</strong></li>
+<li>Powyższe ograniczenia mają zastosowanie niezależnie od podstawy prawnej odpowiedzialności (umownej, deliktowej, zaniedbania, odpowiedzialności na zasadzie ryzyka lub innej).</li>
+</ol>
+<p>Niektóre jurysdykcje nie zezwalają na określone ograniczenia odpowiedzialności wobec konsumentów; w takich jurysdykcjach niektóre z powyższych ograniczeń mogą nie mieć do Ciebie zastosowania, a nasza odpowiedzialność zostanie ograniczona w maksymalnym zakresie dopuszczalnym przez prawo Twojej jurysdykcji.</p>
+<hr />
+<h2 id="indemnification">11. Zwolnienie z odpowiedzialności</h2>
+<p>Zobowiązujesz się zwolnić Dmytro Mosnenko z odpowiedzialności wobec jakichkolwiek roszczeń osób trzecich, zobowiązań, szkód lub kosztów (w tym uzasadnionych kosztów obsługi prawnej), wynikających z: (a) naruszenia przez Ciebie niniejszego Regulaminu; (b) naruszenia przez Ciebie regulaminu serwisu osoby trzeciej poprzez zgłoszenia przesłane do AdAgent; lub (c) wykorzystania przez Ciebie treści generowanych przez AI jako podstawy decyzji zakupowej lub innej decyzji, która wyrządza szkodę Tobie lub osobie trzeciej.</p>
+<hr />
+<h2 id="termination">12. Rozwiązanie</h2>
+<p>Możemy w dowolnym momencie zawiesić lub zakończyć Twój dostęp do Usługi, z podaniem przyczyny lub bez niej, w tym z powodu naruszenia niniejszego Regulaminu, nadużycia Usługi lub podejrzenia oszustwa. Możesz zaprzestać korzystania z Usługi i/lub anulować subskrypcję w dowolnym momencie, zgodnie z punktem 6.5. Punkty 4, 6.6, 8, 9, 10, 11 oraz 14 pozostają w mocy po rozwiązaniu.</p>
+<hr />
+<h2 id="governing-law-and-disputes">13. Prawo właściwe i spory</h2>
+<p>Niniejszy Regulamin podlega prawu polskiemu, z wyłączeniem norm kolizyjnych, <strong>z zastrzeżeniem, że jeśli jesteś konsumentem mającym miejsce zamieszkania w UE/EOG, Wielkiej Brytanii lub innej jurysdykcji, której bezwzględnie obowiązujące przepisy o ochronie konsumentów przyznają Ci dodatkowe prawa lub inne prawo właściwe/sąd właściwy, te bezwzględnie obowiązujące przepisy nadal mają zastosowanie i nie są uchylane przez niniejszy punkt.</strong> Wszelkie spory niepodlegające bezwzględnie obowiązującym przepisom o jurysdykcji konsumenckiej będą rozstrzygane przez sąd właściwy dla siedziby administratora w Łodzi, Polska.</p>
+<p>Konsumenci z UE mogą również skorzystać z unijnej platformy internetowego rozstrzygania sporów (ODR) Komisji Europejskiej: <strong>https://ec.europa.eu/consumers/odr</strong>.</p>
+<hr />
+<h2 id="changes-to-these-terms">14. Zmiany niniejszego Regulaminu</h2>
+<p>Możemy od czasu do czasu aktualizować niniejszy Regulamin. Istotne zmiany zostaną odzwierciedlone poprzez aktualizację daty „Ostatnia aktualizacja” oraz — dla aktywnych subskrybentów — zgłoszone e-mailem tam, gdzie wymaga tego prawo. Dalsze korzystanie z Usługi po wejściu zmian w życie oznacza akceptację zaktualizowanego Regulaminu.</p>
+<hr />
+<h2 id="contact">15. Kontakt</h2>
+<p><strong>Dmytro Mosnenko</strong><br />
+Rajmunda Rembielińskiego 16, 93-575 Łódź, Polska<br />
+NIP: 7272885849 · REGON: 540831059<br />
+E-mail: <strong>support-adagent@dimosense.com</strong></p>
+{% else %}
+<h1>AdAgent — Terms of Service</h1></div>
     <p class="legal-updated">Last updated: 2026-09-24</p>
 <p>These Terms of Service (“<strong>Terms</strong>”) govern your access to and use of AdAgent, the automated listing-analysis service available at <strong>adagent.dimosense.com</strong> (the “<strong>Service</strong>”). By accessing or using the Service, you agree to be bound by these Terms. If you do not agree, do not use the Service.</p>
 <hr />
@@ -15,9 +149,8 @@
 <strong>Business address:</strong> Rajmunda Rembielińskiego 16, 93-575 Łódź, Poland<br />
 <strong>NIP (Tax ID):</strong> 7272885849<br />
 <strong>REGON:</strong> 540831059<br />
-<strong>Electronic delivery address (ADE):</strong> AE:PL-87094-28662-SVWTJ-16<br />
 <strong>Contact:</strong> <strong>support-adagent@dimosense.com</strong><br />
-<strong>VAT status:</strong> [insert — e.g., “VAT-exempt small business under Polish law” or provide EU VAT number if registered]</p>
+<strong>VAT status:</strong> EU VAT ID: PL7272885849 (Active VAT taxpayer)</p>
 </blockquote>
 <hr />
 <h2 id="what-adagent-is">2. What AdAgent is</h2>
@@ -65,9 +198,9 @@
 <hr />
 <h2 id="plans-billing-and-payment">6. Plans, billing, and payment</h2>
 <h3 id="free-tier">6.1 Free tier</h3>
-<p>Without a paid subscription, AdAgent analyzes up to the first <strong>[FREE_ADS_LIMIT — currently 5]</strong> ads found for a given search, at no charge.</p>
+<p>Without a paid subscription, AdAgent analyzes up to the first <strong>{{ settings.FREE_ADS_LIMIT }}</strong> ads found for a given search, at no charge.</p>
 <h3 id="adagent-pro-subscription">6.2 AdAgent Pro subscription</h3>
-<p>AdAgent Pro is a paid subscription (currently <strong>US $9.99 per month</strong>, or other plan periods as displayed at checkout) that unlocks analysis of all ads in a search result and access to your full report history. Pricing displayed at checkout is authoritative and may differ from the figure stated here if we have updated pricing since this document was last revised.</p>
+<p>AdAgent Pro is a paid subscription (currently <strong>{{ settings.PRICE_LABEL_MONTHLY }}{% if settings.PRICE_LABEL_MONTHLY_PL %} / {{ settings.PRICE_LABEL_MONTHLY_PL }} for customers billed in PLN{% endif %} per month</strong>, or other plan periods as displayed at checkout) that unlocks analysis of all ads in a search result and access to your full report history. Pricing displayed at checkout is authoritative and may differ from the figure stated here if we have updated pricing since this document was last revised.</p>
 <h3 id="payment-processing">6.3 Payment processing</h3>
 <p>All payments are processed by <strong>Stripe, Inc.</strong> through Stripe Checkout. <strong>AdAgent never collects or stores your card number or other payment credentials.</strong> By subscribing, you also agree to Stripe’s terms of service applicable to the payment method you use.</p>
 <h3 id="automatic-renewal">6.4 Automatic renewal</h3>
@@ -134,8 +267,8 @@
 <p><strong>Dmytro Mosnenko</strong><br />
 Rajmunda Rembielińskiego 16, 93-575 Łódź, Poland<br />
 NIP: 7272885849 · REGON: 540831059<br />
-Electronic delivery address: AE:PL-87094-28662-SVWTJ-16<br />
 Email: <strong>support-adagent@dimosense.com</strong></p>
+{% endif %}
   </div>
 </div>
 {% endblock %}

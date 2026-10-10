@@ -1,0 +1,66 @@
+{#- Google Ads / GA4 tag with Consent Mode v2. Rendered only when GOOGLE_ADS_ID or GA4_MEASUREMENT_ID is set.
+    Default: every storage type is denied and gtag.js is NOT loaded until the visitor clicks "Accept".
+    GOOGLE_CONSENT_ADVANCED=true loads gtag.js immediately in denied mode (cookieless pings / conversion modelling). -#}
+{% if settings.tracking_enabled %}
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){ dataLayer.push(arguments); }
+(function () {
+  var ADS      = {{ settings.GOOGLE_ADS_ID|tojson }};
+  var GA4      = {{ settings.GA4_MEASUREMENT_ID|tojson }};
+  var LABELS   = {{ settings.google_ads_labels|tojson }};
+  var ADVANCED = {{ settings.GOOGLE_CONSENT_ADVANCED|tojson }};
+  var KEY = "aa_consent";
+  var loaded = false;
+
+  gtag("consent", "default", {
+    ad_storage: "denied", ad_user_data: "denied",
+    ad_personalization: "denied", analytics_storage: "denied",
+    wait_for_update: 500
+  });
+  gtag("set", "ads_data_redaction", true);
+
+  function stored() { try { return localStorage.getItem(KEY); } catch (e) { return null; } }
+  function store(v) { try { localStorage.setItem(KEY, v); } catch (e) {} }
+  function clear()  { try { localStorage.removeItem(KEY); } catch (e) {} }
+
+  function setConsent(granted) {
+    var v = granted ? "granted" : "denied";
+    gtag("consent", "update", {
+      ad_storage: v, ad_user_data: v, ad_personalization: v, analytics_storage: v
+    });
+  }
+
+  function loadTag() {
+    if (loaded) return;
+    loaded = true;
+    var s = document.createElement("script");
+    s.async = true;
+    s.src = "https://www.googletagmanager.com/gtag/js?id=" + encodeURIComponent(ADS || GA4);
+    document.head.appendChild(s);
+    gtag("js", new Date());
+    if (ADS) gtag("config", ADS);
+    if (GA4) gtag("config", GA4);
+  }
+
+  window.aaConsent = {
+    state:  stored,
+    accept: function () { store("granted"); setConsent(true); loadTag(); },
+    reject: function () { store("denied");  setConsent(false); if (ADVANCED) loadTag(); },
+    reset:  function () { clear(); setConsent(false); }
+  };
+
+  // kind: "purchase" | "analysis_started"  (see settings.google_ads_labels)
+  window.aaConversion = function (kind, params) {
+    params = params || {};
+    if (ADS && LABELS[kind]) {
+      gtag("event", "conversion", Object.assign({ send_to: ADS + "/" + LABELS[kind] }, params));
+    }
+    if (GA4) gtag("event", kind, params);
+  };
+
+  if (stored() === "granted") { setConsent(true); loadTag(); }
+  else if (ADVANCED)          { loadTag(); }
+})();
+</script>
+{% endif %}

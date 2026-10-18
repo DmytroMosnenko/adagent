@@ -231,6 +231,17 @@ def _is_ad(url: str) -> bool:
     return any(p in url for p in _AD_PATTERNS)
 
 
+# Otodom serves paid "highlighted promoted" slots under a /hpr/ path prefix
+# (e.g. https://www.otodom.pl/hpr/pl/oferta/...). They are injected into the
+# listing markup regardless of the user's filter — so they can be a 4-room,
+# 136 m² flat on a "2 rooms, up to 250k" search — and they are not real
+# matches. Confirmed against a saved real Otodom results page (2026-10).
+_PROMOTED_URL_RE = re.compile(r"^https?://[^/]*otodom\.pl/hpr/", re.IGNORECASE)
+def _is_promoted_url(url: str) -> bool:
+    """True for sponsored slots that are not genuine filter matches."""
+    return bool(_PROMOTED_URL_RE.match(url))
+
+
 def _next_page_by_url(url: str) -> str:
     """
     Increment ?page=N in the URL query string.
@@ -241,7 +252,9 @@ def _next_page_by_url(url: str) -> str:
     params = parse_qs(parsed.query, keep_blank_values=True)
     current_page = int(params.get("page", ["1"])[0])
     params["page"] = [str(current_page + 1)]
-    new_query = urlencode({k: v[0] for k, v in params.items()})
+    # doseq=True keeps every value of a repeated filter param; taking only
+    # v[0] would silently widen the search past the user's filter.
+    new_query = urlencode(params, doseq=True)
     return urlunparse(parsed._replace(query=new_query))
 
 
@@ -261,7 +274,7 @@ def _reset_to_first_page(url: str) -> str:
     if "page" not in params:
         return url
     del params["page"]
-    new_query = urlencode({k: v[0] for k, v in params.items()})
+    new_query = urlencode(params, doseq=True)
     reset = urlunparse(parsed._replace(query=new_query))
     logger.info("[scraper] filter URL pointed past page 1 — reset to: %s", reset)
     return reset
@@ -717,6 +730,80 @@ async def _collect_listing_hrefs(page, selectors: tuple) -> list[str]:
     )
 
 
+# Otodom listing markup (confirmed against a saved real results page, 2026-10):
+#
+#   <div data-cy="search.listing.organic"><ul>
+#       <li><article> … <a data-cy="listing-item-link" href=".../pl/oferta/…"> …   ← real match
+#       <li>(ad-slot placeholder, no article)
+#       …
+#       <li style="display: none"><article> … /hpr/pl/oferta/…                      ← promoted, hidden
+#
+# Each real card holds FOUR <a> tags pointing at the same ad (image gallery
+# links + title link), only one of which carries data-cy="listing-item-link".
+# The generic `article a[href]` selector therefore (a) is redundant 4x and
+# (b) also sweeps up the hidden promoted <li>, whose /hpr/ URL is an ad that
+# does NOT match the user's filter. Scope to the organic container, take one
+# link per card, and skip anything not actually rendered.
+_OTODOM_ORGANIC_ROOT = '[data-cy="search.listing.organic"]'
+_OTODOM_CARD_LINK    = 'article a[data-cy="listing-item-link"][href]'
+
+
+async def _collect_otodom_hrefs(page) -> Optional[list[str]]:
+    """
+    Return the hrefs of genuine, visible Otodom result cards in document
+    order, or None when the organic results container isn't on the page
+    (markup changed / not a results page) so the caller can fall back.
+    """
+    return await page.evaluate(
+        """([rootSel, linkSel]) => {
+            const root = document.querySelector(rootSel);
+            if (!root) return null;
+            // display:none / visibility:hidden on the link or ANY ancestor.
+            const hidden = (el) => {
+                for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
+                    const cs = getComputedStyle(n);
+                    if (cs.display === 'none' || cs.visibility === 'hidden') return true;
+                }
+                return false;
+            };
+            const hrefs = [];
+            for (const a of root.querySelectorAll(linkSel)) {
+                if (hidden(a)) continue;
+                const href = a.getAttribute('href') || '';
+                if (href) hrefs.push(href);
+            }
+            return hrefs;
+        }""",
+        [_OTODOM_ORGANIC_ROOT, _OTODOM_CARD_LINK],
+    )
+
+
+# Otodom's own result counter, e.g. "1-36 ogłoszeń z 67" (page 1 of a
+# 67-result search). The total is the one objective number we can hold the
+# crawl to. Thousands are separated by a space / nbsp ("1 234"); the
+# {3}-digit group stops us from swallowing the pagination digits that follow.
+_OTODOM_TOTAL_RE = re.compile(
+    r"\d+\s*[-–]\s*\d+\s+ogłosze\w*\s+z\s+(\d{1,3}(?:[ \u00a0]\d{3})*)",
+    re.IGNORECASE,
+)
+
+
+def _parse_total_results(text: str) -> Optional[int]:
+    """Extract N from Otodom's "a-b ogłoszeń z N" counter, or None."""
+    m = _OTODOM_TOTAL_RE.search(text or "")
+    if not m:
+        return None
+    return int(re.sub(r"\D", "", m.group(1)))
+
+
+async def _read_otodom_total(page) -> Optional[int]:
+    try:
+        text = await page.evaluate("() => document.body ? document.body.innerText : ''")
+    except Exception:
+        return None
+    return _parse_total_results(text)
+
+
 async def _diagnose_listing_page(page, url: str, new_count: int) -> Optional[str]:
     """
     Called for the FIRST listing page only, after counting the ad cards
@@ -958,6 +1045,7 @@ async def _collect_all_links_once(filter_url: str) -> tuple[list[str], str]:
     seen: set[str] = set()
     links: list[str] = []
     diagnosis = ""
+    total_results: Optional[int] = None   # site-reported result count (Otodom)
 
     # Checked out from the shared pool — this crawl already holds a
     # scrape_gate slot (see collect_all_links), so a context is guaranteed
@@ -1004,16 +1092,41 @@ async def _collect_all_links_once(filter_url: str) -> tuple[list[str], str]:
             # cross-domain cards: OLX native + Otomoto + Otodom in one page)
             prev_count = len(links)
             base = _origin(page.url)
+            site = _site(current)
             try:
-                raw_hrefs = await _collect_listing_hrefs(page, _LISTING_SELECTORS)
+                raw_hrefs = None
+                if site == "otodom":
+                    # Scoped to the organic results container, one link per
+                    # visible card — see _collect_otodom_hrefs for why the
+                    # generic selectors over-collect on Otodom.
+                    raw_hrefs = await _collect_otodom_hrefs(page)
+                    if raw_hrefs is None:
+                        logger.warning(
+                            "[scraper] Otodom organic results container not found "
+                            "(markup changed?) — falling back to generic selectors: %s",
+                            current,
+                        )
+                if raw_hrefs is None:
+                    raw_hrefs = await _collect_listing_hrefs(page, _LISTING_SELECTORS)
             except Exception as exc:
                 logger.warning("[scraper] listing href collection failed: %s", exc)
                 raw_hrefs = []
+            skipped_promoted = 0
             for raw in raw_hrefs:
                 full = _clean(_absolute(raw, base))
-                if full and _is_ad(full) and full not in seen:
+                if not full or not _is_ad(full):
+                    continue
+                if _is_promoted_url(full):
+                    skipped_promoted += 1
+                    continue
+                if full not in seen:
                     seen.add(full)
                     links.append(full)
+            if skipped_promoted:
+                logger.info("[scraper] page %d: skipped %d promoted (/hpr/) link(s)",
+                            page_n, skipped_promoted)
+            if site == "otodom":
+                total_results = await _read_otodom_total(page) or total_results
 
             new_count = len(links) - prev_count
             logger.info("[scraper] page %d: +%d links (total %d)", page_n, new_count, len(links))
@@ -1033,6 +1146,22 @@ async def _collect_all_links_once(filter_url: str) -> tuple[list[str], str]:
                         links = []
                         seen.clear()
                     break
+
+            # Stop condition: Otodom told us how many results this search has
+            # ("1-36 ogłoszeń z 67"). Once we have that many we're done —
+            # anything beyond it (a repeated last page, extra promoted slots)
+            # is by definition not a match for the filter.
+            if total_results is not None and len(links) >= total_results:
+                if len(links) > total_results:
+                    logger.warning(
+                        "[scraper] collected %d links but the site reports only %d "
+                        "results — truncating to the reported total",
+                        len(links), total_results,
+                    )
+                    del links[total_results:]
+                logger.info("[scraper] reached site-reported total (%d) after %d page(s)",
+                            total_results, page_n)
+                break
 
             # Stop condition: no new links means we've exhausted the results
             if new_count == 0:
@@ -1073,7 +1202,6 @@ async def _collect_all_links_once(filter_url: str) -> tuple[list[str], str]:
             #    Keep this after numbered-link detection so an explicit link
             #    rendered by the site always wins.
             if not nxt:
-                site = _site(current)
                 if site in ("otomoto", "otodom"):
                     nxt = _next_page_by_url(current)
                     logger.debug("[scraper] next page via URL increment: %s", nxt)

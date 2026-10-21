@@ -67,7 +67,7 @@ a{color:var(--blue)}
 .leaderboard{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);
              overflow:hidden;margin-bottom:20px}
 .lb-head{background:var(--navy);color:#fff;padding:12px 20px;font-weight:700;font-size:0.9rem}
-.lb-row{display:grid;grid-template-columns:42px minmax(0,1fr) 52px 100px 70px;
+.lb-row{display:grid;grid-template-columns:42px minmax(0,1fr) 52px 100px max-content;
         align-items:center;gap:10px;padding:11px 20px;
         border-bottom:1px solid var(--border);transition:background .15s}
 .lb-row:last-child{border-bottom:none}
@@ -210,7 +210,7 @@ details.raw.deep-dive>summary:hover{background:#e1ecf9;color:var(--navy)}
 #float-btn-summary:hover{opacity:.85;transform:translateY(-2px);background:#f8fafc}
 
 @media(max-width:620px){
-  .lb-row{grid-template-columns:34px minmax(0,1fr) 42px}
+  .lb-row{grid-template-columns:34px minmax(0,1fr) max-content}
   .lb-score,.lb-price{display:none}
 }
 </style>

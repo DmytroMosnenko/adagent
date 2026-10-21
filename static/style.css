@@ -202,7 +202,7 @@ table.history tr:last-child td { border-bottom: none; }
 .site-footer .footer-sep { margin-top: 6px; display: block; }
 
 /* ── LANDING PAGE SECTIONS (how it works / what's in the report / FAQ) ── */
-.landing-section { margin: 44px 0; }
+.landing-section { margin: 30px 0; }
 .landing-h { font-size: 1.25rem; font-weight: 800; color: var(--navy); margin-bottom: 18px;
              text-align: center; }
 .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
@@ -227,6 +227,80 @@ table.history tr:last-child td { border-bottom: none; }
 .faq summary::after { content: "+"; float: right; color: var(--muted); font-weight: 400; }
 .faq details[open] summary::after { content: "–"; }
 .faq p { font-size: 0.87rem; color: var(--muted); padding-bottom: 14px; margin: 0; line-height: 1.6; }
+
+/* ── HERO 3-STEP STRIP + STEP MOCKUPS (landing) ── */
+.hero-steps { list-style: none; display: flex; flex-wrap: wrap; justify-content: center;
+              align-items: center; gap: 8px 10px; margin: 22px auto 0; max-width: 780px; }
+.hero-steps li:not(.hero-steps-arrow) { display: inline-flex; align-items: center; gap: 8px;
+              background: #fff; border: 1px solid var(--border); border-radius: 999px;
+              padding: 6px 14px 6px 6px; font-size: 0.85rem; font-weight: 600; color: var(--navy); }
+.hero-steps .step-n { margin: 0; width: 24px; height: 24px; font-size: 0.78rem; }
+.hero-steps-arrow { color: var(--muted); }
+
+.steps { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.step { display: flex; flex-direction: column; }
+.mock { margin-top: auto; padding-top: 14px; }
+.mock-row { background: #f8fafc; }
+.mock-tag { font-size: 0.64rem; font-weight: 700; color: var(--muted); margin: 0 0 3px 2px; }
+.mock-url, .mock-field { display: block; border: 1px solid var(--border); border-radius: 6px;
+            padding: 5px 8px; font-size: 0.68rem; color: var(--text);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mock-url { background: #fff !important; margin-bottom: 0 !important; }
+.mock-url mark { background: #bfdbfe; color: #1e3a8a; padding: 1px 2px; border-radius: 3px; }
+.mock-keys { display: flex; align-items: center; justify-content: center; gap: 5px;
+             margin: 6px 0 8px; font-size: 0.64rem; color: var(--muted); }
+.mock-keys span { font-size: 1rem; color: var(--navy); font-weight: 700; margin: 0 4px; line-height: 1; }
+.mock-keys kbd { font-family: inherit; font-weight: 700; background: #fff; border: 1px solid var(--border);
+                 border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; color: var(--navy); }
+.mock-field { background: #fff; border-color: var(--navy); box-shadow: 0 0 0 2px rgba(30,58,95,.12); }
+.mock-field i { display: inline-block; width: 1px; height: 0.8em; margin-left: 1px; vertical-align: -1px;
+                background: var(--navy); animation: blink 1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+.mock-row > div { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; min-width: 0; }
+.mock-row .mock-score { margin-right: 0; }
+.mock-url { border: 1px solid var(--border); border-radius: 6px; padding: 5px 9px; margin-bottom: 6px;
+            font-size: 0.7rem; color: var(--muted); background: #eef2f7 !important;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mock-row { display: flex; justify-content: space-between; align-items: center; gap: 8px;
+            border: 1px solid var(--border); border-radius: 6px; padding: 6px 9px; margin-bottom: 5px;
+            font-size: 0.74rem; color: var(--text); }
+.mock-row:last-child { margin-bottom: 0; }
+.mock-row b { font-weight: 700; }
+.mock-ok { font-style: normal; color: var(--green); font-weight: 700; margin-right: 6px; }
+.mock-spin { display: inline-block; width: 10px; height: 10px; margin-right: 8px; border-radius: 50%;
+             border: 2px solid var(--border); border-top-color: var(--navy); animation: spin 0.9s linear infinite; }
+.mock-score { display: inline-block; min-width: 28px; text-align: center; border-radius: 999px;
+              padding: 1px 5px; margin-right: 4px; font-size: 0.68rem; min-width: 26px; }
+.mock-row > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mock-row > span:last-child { white-space: nowrap; flex-shrink: 0; }
+.mock-pill { font-style: normal; font-size: 0.62rem; font-weight: 700; padding: 1px 6px; border-radius: 999px; }
+.mock .g { background: var(--green-bg); color: var(--green); }
+.mock .a { background: #fef3c7; color: #92400e; }
+.mock .r { background: #fee2e2; color: var(--red); }
+@media (max-width: 820px) { .hero-steps-arrow { display: none; } }
+@media (max-width: 560px) {
+  .steps { grid-template-columns: 1fr; }
+  .hero-steps { flex-direction: column; align-items: stretch; max-width: 280px; }
+  .hero-steps-arrow { display: none; }
+}
+
+/* ── REAL REPORT SCREENSHOT (landing) ── */
+.shot-lead { margin: 26px 0 10px; text-align: center; font-size: 0.9rem; font-weight: 600; color: var(--navy); }
+.shot-chip { display: inline-block; margin-right: 6px; padding: 1px 9px; border-radius: 999px;
+             background: var(--green-bg); color: var(--green); font-size: 0.7rem; font-weight: 800;
+             letter-spacing: .05em; text-transform: uppercase; }
+.report-shot { margin: 0; text-align: center; }
+.report-shot a { text-decoration: none; }
+.shot-frame { background: #fff; border: 1px solid var(--border); border-radius: var(--radius);
+              box-shadow: 0 6px 24px rgba(30,58,95,.14); overflow: hidden; }
+.shot-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: #eef2f7;
+            border-bottom: 1px solid var(--border); }
+.shot-bar i { width: 9px; height: 9px; border-radius: 50%; background: #cbd5e1; }
+.shot-bar span { margin-left: 8px; flex: 1; min-width: 0; padding: 2px 10px; background: #fff; border-radius: 6px;
+                 font-size: 0.7rem; color: var(--muted); text-align: left;
+                 white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.report-shot img { display: block; width: 100%; height: auto; }
+.report-shot figcaption { margin-top: 10px; font-size: 0.85rem; }
 
 /* ── COOKIE CONSENT BAR (Google Ads / GA4 — see _consent_banner.html) ── */
 .consent-bar { position: fixed; left: 16px; right: 16px; bottom: 16px; z-index: 200;

@@ -13,12 +13,25 @@
 <meta property="og:title" content="{{ t('AdAgent — Analyze OLX ads with AI') }}">
 <meta property="og:description" content="{{ t('Paste an OLX, Otomoto or Otodom search link. AI reads every ad, scores it 1–10, flags red flags and known model weak points, and ranks the offers for you.') }}">
 <meta property="og:url" content="{{ settings.APP_BASE_URL }}{{ '/pl' if ui_lang == 'pl' else '/' }}">
+<meta property="og:image" content="{{ settings.APP_BASE_URL }}/static/og-image{{ '-pl' if ui_lang == 'pl' else '' }}.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="{{ t('AdAgent — Analyze OLX ads with AI') }}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="{{ settings.APP_BASE_URL }}/static/og-image{{ '-pl' if ui_lang == 'pl' else '' }}.png">
 {% endblock %}
 
 {% block content %}
 <div class="hero">
   <h1>{{ t("Find the best deal,") }}<br><span>{{ t("powered by AI") }}</span></h1>
   <p>{{ t("Paste any OLX search link. AdAgent reads every ad, scores it 1–10, flags red flags, and gives you a ranked leaderboard in minutes.") }}</p>
+  <ol class="hero-steps">
+    <li><span class="step-n">1</span>{{ t("Paste a search link") }}</li>
+    <li class="hero-steps-arrow" aria-hidden="true">→</li>
+    <li><span class="step-n">2</span>{{ t("AI reads every ad") }}</li>
+    <li class="hero-steps-arrow" aria-hidden="true">→</li>
+    <li><span class="step-n">3</span>{{ t("Get a ranked report") }}</li>
+  </ol>
 </div>
 
 <div class="container" style="max-width:680px">
@@ -32,10 +45,10 @@
 
       <!-- OLX URL -->
       <div class="form-group">
-        <label class="form-label" for="filter_url">{{ t("OLX / Otomoto / Otodom filter URL") }}</label>
+        <label class="form-label" for="filter_url">{{ t("Your search link (OLX, Otomoto or Otodom)") }}</label>
         <input class="form-input" type="url" id="filter_url" name="filter_url" required
                placeholder="https://www.olx.pl/motoryzacja/samochody/q-mini/">
-        <p class="form-hint">{{ t("Go to OLX, apply your filters, copy the URL from the browser bar.") }}</p>
+        <p class="form-hint">{{ t("Open OLX, Otomoto or Otodom, set your filters (brand, price, year…), then copy the address from the browser bar and paste it here.") }}</p>
       </div>
 
       <!-- Preset selector -->
@@ -111,14 +124,49 @@
     <div class="steps">
       <div class="step"><span class="step-n">1</span>
         <h3>{{ t("Paste a search link") }}</h3>
-        <p>{{ t("Set your filters on OLX, Otomoto or Otodom and copy the address from the browser bar.") }}</p></div>
+        <p>{{ t("Set your filters on OLX, Otomoto or Otodom and copy the address from the browser bar.") }}</p>
+        <div class="mock" aria-hidden="true">
+          <div class="mock-tag">OLX</div>
+          <div class="mock-url"><mark>🔒 olx.pl/motoryzacja/samochody/q-ford/…</mark></div>
+          <div class="mock-keys"><kbd>Ctrl</kbd>+<kbd>C</kbd><span>↓</span><kbd>Ctrl</kbd>+<kbd>V</kbd></div>
+          <div class="mock-tag">AdAgent</div>
+          <div class="mock-field">olx.pl/motoryzacja/samochody/q-ford/…<i></i></div>
+        </div></div>
       <div class="step"><span class="step-n">2</span>
         <h3>{{ t("AI reads every ad") }}</h3>
-        <p>{{ t("Each listing is analyzed one by one — the ad text is cross-checked with what is known about that exact model or building.") }}</p></div>
+        <p>{{ t("Each listing is analyzed one by one — the ad text is cross-checked with what is known about that exact model or building.") }}</p>
+        <div class="mock" aria-hidden="true">
+          <div class="mock-row"><span><i class="mock-ok">✓</i>Ford Focus 2018</span></div>
+          <div class="mock-row"><span><i class="mock-ok">✓</i>VW Golf 2017</span></div>
+          <div class="mock-row"><span><i class="mock-spin"></i>Opel Astra 2016</span></div>
+        </div></div>
       <div class="step"><span class="step-n">3</span>
         <h3>{{ t("Get a ranked report") }}</h3>
-        <p>{{ t("A leaderboard with scores, red flags and a market summary — so you know which offers to view first.") }}</p></div>
+        <p>{{ t("A leaderboard with scores, red flags and a market summary — so you know which offers to view first.") }}</p>
+        <div class="mock" aria-hidden="true">
+          <div class="mock-row"><div><b>Ford Focus</b><em class="mock-pill g">{{ t("Worth Viewing") }}</em></div><b class="mock-score g">8.7</b></div>
+          <div class="mock-row"><div><b>VW Golf</b><em class="mock-pill a">{{ t("Maybe") }}</em></div><b class="mock-score a">7.9</b></div>
+          <div class="mock-row"><div><b>Audi A4</b><em class="mock-pill r">{{ t("Skip") }}</em></div><b class="mock-score r">4.7</b></div>
+        </div></div>
     </div>
+
+    <!-- Real report screenshot -->
+    <p class="shot-lead"><span class="shot-chip">{{ t("Example") }}</span> {{ t("What a finished report looks like") }}</p>
+    <figure class="report-shot">
+      {% if settings.SAMPLE_REPORT_URL %}<a href="{{ settings.SAMPLE_REPORT_URL }}" target="_blank" rel="noopener">{% endif %}
+      <div class="shot-frame">
+        <div class="shot-bar"><i></i><i></i><i></i><span>{{ settings.APP_BASE_URL|replace('https://','')|replace('http://','') }}/report/…</span></div>
+        <picture>
+          <source media="(max-width: 560px)" srcset="/static/sample-leaderboard-m.webp" type="image/webp">
+          <source media="(max-width: 560px)" srcset="/static/sample-leaderboard-m.png">
+          <source srcset="/static/sample-leaderboard.webp" type="image/webp">
+          <img src="/static/sample-leaderboard.png" width="1300" height="983" loading="lazy"
+               alt="{{ t('Example AdAgent report: a ranked leaderboard of car offers with scores and verdicts') }}">
+        </picture>
+      </div>
+      {% if settings.SAMPLE_REPORT_URL %}</a>{% endif %}
+      <figcaption>{% if settings.SAMPLE_REPORT_URL %}<a href="{{ settings.SAMPLE_REPORT_URL }}" target="_blank" rel="noopener">{{ t("Open the full sample report →") }}</a>{% endif %}</figcaption>
+    </figure>
   </section>
 
   <!-- What is in the report -->

@@ -77,7 +77,7 @@ PL: dict[str, str] = {
     "Sign out": "Wyloguj",
     "Upgrade →": "Przejdź na Pro →",
     "Sign in": "Zaloguj",
-    "Go Pro →": "Wersja Pro →",
+    "Go Pro →": "Wersja Pro",
     "Billing Details": "Rozliczenia",
     "Privacy Policy": "Polityka prywatności",
     "Terms of Service": "Regulamin",
@@ -96,6 +96,14 @@ PL: dict[str, str] = {
         "Wklej link do wyszukiwania z OLX, Otomoto lub Otodom. AdAgent przeczyta każde ogłoszenie, oceni je w skali 1–10, wskaże czerwone flagi i przygotuje ranking ofert.",
     "OLX / Otomoto / Otodom filter URL": "Link do wyszukiwania z OLX / Otomoto / Otodom",
     "Go to OLX, apply your filters, copy the URL from the browser bar.": "Wejdź na OLX, Otomoto lub Otodom, ustaw filtry i skopiuj adres z paska przeglądarki.",
+    "Your search link (OLX, Otomoto or Otodom)": "Twój link do wyszukiwania (OLX, Otomoto lub Otodom)",
+    "Open OLX, Otomoto or Otodom, set your filters (brand, price, year…), then copy the address from the browser bar and paste it here.":
+        "Wejdź na OLX, Otomoto lub Otodom, ustaw filtry (marka, cena, rok…), skopiuj adres z paska przeglądarki i wklej go tutaj.",
+    "Example AdAgent report: a ranked leaderboard of car offers with scores and verdicts":
+        "Przykładowy raport AdAgent: ranking ofert samochodów z ocenami i werdyktami",
+    "Example": "Przykład",
+    "What a finished report looks like": "Tak wygląda gotowy raport",
+    "Open the full sample report →": "Otwórz pełny przykładowy raport →",
     "Analysis preset": "Rodzaj analizy",
     "Custom prompts": "Własne prompty",
     "Write your own analysis instructions": "Napisz własne instrukcje analizy",

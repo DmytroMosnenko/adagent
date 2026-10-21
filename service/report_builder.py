@@ -19,6 +19,16 @@ _VERDICT_LABELS = {
     "skip":          "Skip",
     "unknown":       "Unknown",
 }
+_RAW_VERDICT_RE = re.compile(r"\bworth[_ ]viewing\b", re.I)
+
+
+def _humanize_verdict_keys(text: str, t) -> str:
+    """The summary model sometimes echoes the raw enum 'worth_viewing' — show it as a plain phrase."""
+    if not text:
+        return text
+    return _RAW_VERDICT_RE.sub(lambda m: t("Worth Viewing").lower(), text)
+
+
 _PRICE_LABELS = {
     "fair": "Fair price", "high": "High price",
     "low":  "Low price",  "unknown": "",
@@ -457,7 +467,10 @@ def build_html_report(
     recommended_links = _build_recommended_links(summary.get("recommended_ads"), ads)
 
     env = Environment(loader=FileSystemLoader(template_dir), autoescape=True)
-    env.globals["t"] = translator(ui_lang)
+    t = translator(ui_lang)
+    env.globals["t"] = t
+    summary["market_summary"] = _humanize_verdict_keys(summary.get("market_summary", ""), t)
+    summary["recommendation"] = _humanize_verdict_keys(summary.get("recommendation", ""), t)
     env.filters["thousands"] = lambda v: f"{int(v):,}" if v else ""
 
     ctx = {

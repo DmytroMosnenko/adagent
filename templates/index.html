@@ -22,7 +22,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="hero">
+<div class="hero hero-landing">
   <h1>{{ t("Find the best deal,") }}<br><span>{{ t("powered by AI") }}</span></h1>
   <p>{{ t("Paste any OLX search link. AdAgent reads every ad, scores it 1–10, flags red flags, and gives you a ranked leaderboard in minutes.") }}</p>
   <ol class="hero-steps">
@@ -155,7 +155,7 @@
     <figure class="report-shot">
       {% if settings.SAMPLE_REPORT_URL %}<a href="{{ settings.SAMPLE_REPORT_URL }}" target="_blank" rel="noopener">{% endif %}
       <div class="shot-frame">
-        <div class="shot-bar"><i></i><i></i><i></i><span>{{ settings.APP_BASE_URL|replace('https://','')|replace('http://','') }}/report/…</span></div>
+        <div class="shot-bar"><i></i><i></i><i></i><span>{% set _host = settings.APP_BASE_URL|replace('https://','')|replace('http://','') %}{{ 'adagent.dimosense.com' if (_host.startswith('127.') or _host.startswith('localhost') or _host.startswith('0.0.0.0')) else _host }}/report/…</span></div>
         <picture>
           <source media="(max-width: 560px)" srcset="/static/sample-leaderboard-m.webp" type="image/webp">
           <source media="(max-width: 560px)" srcset="/static/sample-leaderboard-m.png">

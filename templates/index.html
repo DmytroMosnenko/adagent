@@ -126,27 +126,25 @@
         <h3>{{ t("Paste a search link") }}</h3>
         <p>{{ t("Set your filters on OLX, Otomoto or Otodom and copy the address from the browser bar.") }}</p>
         <div class="mock" aria-hidden="true">
-          <div class="mock-tag">OLX</div>
-          <div class="mock-url"><mark>🔒 olx.pl/motoryzacja/samochody/q-ford/…</mark></div>
+          <div class="mock-line"><div><span class="lbl">OLX</span><span class="txt"><mark>olx.pl/motoryzacja/samochody/…</mark></span></div></div>
           <div class="mock-keys"><kbd>Ctrl</kbd>+<kbd>C</kbd><span>↓</span><kbd>Ctrl</kbd>+<kbd>V</kbd></div>
-          <div class="mock-tag">AdAgent</div>
-          <div class="mock-field">olx.pl/motoryzacja/samochody/q-ford/…<i></i></div>
+          <div class="mock-line focus"><div><span class="lbl">AdAgent</span><span class="txt">olx.pl/motoryzacja/samochody/…<i></i></span></div></div>
         </div></div>
       <div class="step"><span class="step-n">2</span>
         <h3>{{ t("AI reads every ad") }}</h3>
         <p>{{ t("Each listing is analyzed one by one — the ad text is cross-checked with what is known about that exact model or building.") }}</p>
         <div class="mock" aria-hidden="true">
-          <div class="mock-row"><span><i class="mock-ok">✓</i>Ford Focus 2018</span></div>
-          <div class="mock-row"><span><i class="mock-ok">✓</i>VW Golf 2017</span></div>
-          <div class="mock-row"><span><i class="mock-spin"></i>Opel Astra 2016</span></div>
+          <div class="mock-line"><span class="txt"><i class="mock-ok">✓</i>Ford Focus 2018</span></div>
+          <div class="mock-line"><span class="txt"><i class="mock-ok">✓</i>VW Golf 2017</span></div>
+          <div class="mock-line"><span class="txt"><i class="mock-spin"></i>Opel Astra 2016</span></div>
         </div></div>
       <div class="step"><span class="step-n">3</span>
         <h3>{{ t("Get a ranked report") }}</h3>
         <p>{{ t("A leaderboard with scores, red flags and a market summary — so you know which offers to view first.") }}</p>
         <div class="mock" aria-hidden="true">
-          <div class="mock-row"><div><b>Ford Focus</b><em class="mock-pill g">{{ t("Worth Viewing") }}</em></div><b class="mock-score g">8.7</b></div>
-          <div class="mock-row"><div><b>VW Golf</b><em class="mock-pill a">{{ t("Maybe") }}</em></div><b class="mock-score a">7.9</b></div>
-          <div class="mock-row"><div><b>Audi A4</b><em class="mock-pill r">{{ t("Skip") }}</em></div><b class="mock-score r">4.7</b></div>
+          <div class="mock-line"><div><b>Ford Focus</b><em class="mock-pill g">{{ t("Worth Viewing") }}</em></div><b class="mock-score g">8.7</b></div>
+          <div class="mock-line"><div><b>VW Golf</b><em class="mock-pill a">{{ t("Maybe") }}</em></div><b class="mock-score a">7.9</b></div>
+          <div class="mock-line"><div><b>Audi A4</b><em class="mock-pill r">{{ t("Skip") }}</em></div><b class="mock-score r">4.7</b></div>
         </div></div>
     </div>
 

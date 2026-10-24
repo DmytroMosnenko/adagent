@@ -12,7 +12,7 @@ from .config import settings
 from .db import async_session
 from . import crud, scraper, ai_client, report_builder, email_client
 from .prompts_registry import PRESETS
-from .languages import build_language_instruction
+from .languages import build_language_instruction, build_language_reminder, strip_language_conflicts
 from .logger import get_logger
 
 logger = get_logger(__name__)
@@ -134,9 +134,12 @@ async def run_analysis(report_id: str) -> None:
         is_templated  = preset_meta.get("templated", False)
 
         lang_instruction = build_language_instruction(report.report_language, is_structured)
+        lang_reminder    = build_language_reminder(report.report_language, is_structured)
         if lang_instruction:
-            ad_prompt      += lang_instruction
-            summary_prompt += lang_instruction
+            # drop the preset's own "same language as the ad" line, then append
+            # the override; the reminder also goes at the end of each user message
+            ad_prompt      = strip_language_conflicts(ad_prompt, report.report_language) + lang_instruction
+            summary_prompt = strip_language_conflicts(summary_prompt, report.report_language) + lang_instruction
 
         # ── 3+4. Extract content + AI-analyze all ads concurrently ────────────
         # Each ad is its own task: scrape (via scraper.scrape_ad, gated by the
@@ -160,9 +163,9 @@ async def run_analysis(report_id: str) -> None:
             # -- Analyze --
             try:
                 if is_templated:
-                    analysis = await ai_client.analyze_ad_templated(data, ad_prompt, report_id)
+                    analysis = await ai_client.analyze_ad_templated(data, ad_prompt, report_id, lang_reminder)
                 else:
-                    analysis = await ai_client.analyze_ad(data, ad_prompt, report_id)
+                    analysis = await ai_client.analyze_ad(data, ad_prompt, report_id, lang_reminder)
             except Exception as exc:
                 analysis = f"AI ERROR: {exc}"
                 logger.warning("[task] ad analysis failed: %s", exc)
@@ -183,9 +186,9 @@ async def run_analysis(report_id: str) -> None:
         logger.info("[task] %s generating summary", report_id)
         try:
             if is_templated:
-                summary_text = await ai_client.analyze_summary_templated(results, summary_prompt, report_id)
+                summary_text = await ai_client.analyze_summary_templated(results, summary_prompt, report_id, lang_reminder)
             else:
-                summary_text = await ai_client.analyze_summary(results, summary_prompt, report_id)
+                summary_text = await ai_client.analyze_summary(results, summary_prompt, report_id, lang_reminder)
         except Exception as exc:
             summary_text = json.dumps({"market_summary": f"Summary failed: {exc}",
                                        "price_range": "", "average_price": "", "recommendation": ""})

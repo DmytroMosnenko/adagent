@@ -109,13 +109,13 @@ def _format_ad(data: dict) -> str:
     return "\n".join(lines)
 
 
-async def analyze_ad(ad_data: dict, system_prompt: str, owner_id: str) -> str:
+async def analyze_ad(ad_data: dict, system_prompt: str, owner_id: str, lang_reminder: str = "") -> str:
     """
     Run per-ad analysis. Returns raw AI response string.
     owner_id (the report id) is used to fairly share the global OpenAI
     concurrency budget across all reports currently running — see ai_gate.
     """
-    user_msg = _format_ad(ad_data)
+    user_msg = _format_ad(ad_data) + lang_reminder
     return await ai_gate.run(owner_id, lambda: _chat(
         system=system_prompt,
         user=user_msg,
@@ -124,7 +124,7 @@ async def analyze_ad(ad_data: dict, system_prompt: str, owner_id: str) -> str:
     ))
 
 
-async def analyze_summary(ad_analyses: list[dict], system_prompt: str, owner_id: str) -> str:
+async def analyze_summary(ad_analyses: list[dict], system_prompt: str, owner_id: str, lang_reminder: str = "") -> str:
     """
     Run summary analysis across all ad results.
     ad_analyses: list of {url, analysis (str)}
@@ -136,6 +136,7 @@ async def analyze_summary(ad_analyses: list[dict], system_prompt: str, owner_id:
         if not r.get("analysis", "").startswith("AI ERROR")
     ]
     combined = "\n\n".join(blocks) if blocks else "No ads were successfully analyzed."
+    combined += lang_reminder
     return await ai_gate.run(owner_id, lambda: _chat(
         system=system_prompt,
         user=combined,
@@ -144,7 +145,7 @@ async def analyze_summary(ad_analyses: list[dict], system_prompt: str, owner_id:
     ))
 
 
-async def analyze_ad_templated(ad_data: dict, prompt_template: str, owner_id: str) -> str:
+async def analyze_ad_templated(ad_data: dict, prompt_template: str, owner_id: str, lang_reminder: str = "") -> str:
     """
     Run per-ad analysis using a self-contained prompt template that embeds
     its own instructions + {{AD_URL}} / {{AD_CONTENT}} placeholders
@@ -157,7 +158,7 @@ async def analyze_ad_templated(ad_data: dict, prompt_template: str, owner_id: st
         prompt_template
         .replace("{{AD_URL}}", ad_data.get("url", ""))
         .replace("{{AD_CONTENT}}", content)
-    )
+    ) + lang_reminder
     return await ai_gate.run(owner_id, lambda: _chat(
         system="You are a meticulous data-extraction assistant. Follow the user's instructions exactly.",
         user=prompt,
@@ -166,7 +167,7 @@ async def analyze_ad_templated(ad_data: dict, prompt_template: str, owner_id: st
     ))
 
 
-async def analyze_summary_templated(ad_analyses: list[dict], prompt_template: str, owner_id: str) -> str:
+async def analyze_summary_templated(ad_analyses: list[dict], prompt_template: str, owner_id: str, lang_reminder: str = "") -> str:
     """
     Run summary analysis using a self-contained prompt template with an
     {{ADS}} placeholder for the combined per-ad analyses.
@@ -179,7 +180,7 @@ async def analyze_summary_templated(ad_analyses: list[dict], prompt_template: st
         if not r.get("analysis", "").startswith("AI ERROR")
     ]
     combined = "\n\n".join(blocks) if blocks else "No ads were successfully analyzed."
-    prompt = prompt_template.replace("{{ADS}}", combined)
+    prompt = prompt_template.replace("{{ADS}}", combined) + lang_reminder
     return await ai_gate.run(owner_id, lambda: _chat(
         system="You are a meticulous comparative analyst. Follow the user's instructions exactly.",
         user=prompt,

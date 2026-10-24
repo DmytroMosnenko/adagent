@@ -8,6 +8,7 @@ from .logger import get_logger
 
 from .config import settings
 from .i18n import translator
+from .scraper import _resize_image_url, _IMG_SIZE_THUMB, _IMG_SIZE_MEDIUM
 logger = get_logger(__name__)
 
 _REF_PAIR_RE = re.compile(r"\{\{ref:([^}]*)\}\}(.*?)\{\{/ref\}\}", re.S)
@@ -339,6 +340,17 @@ def _parse_raw_parameters(params_text: str) -> list[dict]:
     return items
 
 
+def _with_m2_unit(value) -> str:
+    """
+    "8588,24 zł" → "8588,24 zł/m²", but leave "8588,24 zł/m²" / "… zł/m2" alone —
+    the model returns the value "as shown", so it often already carries the unit.
+    """
+    text = str(value).strip() if value not in (None, "") else ""
+    if not text:
+        return ""
+    return text if re.search(r"m\s*(?:²|2|\^2)", text, re.IGNORECASE) else f"{text}/m²"
+
+
 def _prepare_ad(result: dict) -> dict:
     """Convert a raw pipeline result into a Jinja2-ready dict."""
     raw_analysis = result.get("analysis", "")
@@ -386,6 +398,7 @@ def _prepare_ad(result: dict) -> dict:
     verdict = p.get("verdict") or "unknown"
     price_a = p.get("price_assessment") or "unknown"
     url     = result.get("url", "")
+    image_url = raw.get("image_url") or ""
     deep_dive = p.get("deep_dive") or {}
 
     return {
@@ -393,6 +406,12 @@ def _prepare_ad(result: dict) -> dict:
         "site_label":             _site_label(url),
         "category":               _detect_category(specs),
         "title":                  title,
+        # Hotlinked ad photo (may be empty → template renders without it).
+        # Smaller CDN variants for the leaderboard thumb / detail card;
+        # non-resizable URLs come back unchanged.
+        "image_url":              image_url,
+        "image_thumb":            _resize_image_url(image_url, _IMG_SIZE_THUMB),
+        "image_medium":           _resize_image_url(image_url, _IMG_SIZE_MEDIUM),
         "make":                   (specs.get("make") or "").strip(),
         "model":                  (specs.get("model") or "").strip(),
         "district":               (specs.get("district") or "").strip(),
@@ -406,7 +425,7 @@ def _prepare_ad(result: dict) -> dict:
         "summary":                p.get("summary") or "",
         "spec_items":             spec_items,
         "asking_price":           p.get("asking_price") or raw.get("price") or "",
-        "price_per_m2":           p.get("price_per_m2") or "",
+        "price_per_m2":           _with_m2_unit(p.get("price_per_m2")),
         "price_assessment":       price_a,
         "price_assessment_label": _PRICE_LABELS.get(price_a, ""),
         "red_flags":              p.get("red_flags") or [],

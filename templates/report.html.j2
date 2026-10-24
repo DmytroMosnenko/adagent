@@ -70,6 +70,32 @@ a{color:var(--blue)}
 .lb-row{display:grid;grid-template-columns:42px minmax(0,1fr) 52px 100px max-content;
         align-items:center;gap:10px;padding:11px 20px;
         border-bottom:1px solid var(--border);transition:background .15s}
+.lb-row.has-thumb{grid-template-columns:72px minmax(0,1fr) 52px 100px max-content}
+.lb-thumb{position:relative;width:72px;height:54px;border-radius:6px;overflow:hidden;background:var(--border)}
+.lb-thumb img,.ad-thumb img{display:block;width:100%;height:100%;object-fit:cover}
+/* Detail card with photo — desktop: 2-column grid. The photo stretches to the height of
+   header + verdict note (no empty space under it); the summary then spans the full width.
+   Mobile (media query below) switches to a right-floated photo that all text wraps around. */
+.ad-lead{display:flow-root}
+.ad-thumb{position:relative;width:160px;min-height:108px;max-height:200px;border-radius:8px;
+          overflow:hidden;background:var(--border)}
+.ad-thumb a{position:absolute;inset:0;display:block}
+.ad-lead.has-photo{display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:16px;padding:15px 20px 0}
+.ad-lead.has-photo .ad-thumb{grid-column:1;grid-row:1 / span 2;align-self:stretch}
+.ad-lead.has-photo .ad-header{grid-column:2;grid-row:1;padding:0}
+.ad-lead.has-photo .ad-body{display:contents}   /* note + summary become grid items */
+.ad-lead.has-photo .ad-verdict-note{grid-column:2;grid-row:2;margin:10px 0 0}
+.ad-lead.has-photo .ad-summary{grid-column:1 / -1;grid-row:3;margin:12px 0 10px}
+/* Rank badge on the photo's top-left corner; white ring separates it from the image */
+.rank-badge{position:absolute;top:4px;left:4px;z-index:1;box-sizing:border-box;min-width:24px;height:24px;
+            padding:0 6px;border-radius:12px;display:flex;align-items:center;justify-content:center;
+            background:var(--navy);color:#fff;font-size:0.74rem;font-weight:800;line-height:1;
+            border:2px solid rgba(255,255,255,.95);box-shadow:0 1px 5px rgba(0,0,0,.4);pointer-events:none}
+.rank-badge.gold{background:linear-gradient(135deg,#FCD34D,#D97706);color:#7C2D12}
+.rank-badge.silver{background:linear-gradient(135deg,#E5E7EB,#9CA3AF);color:#1F2937}
+.rank-badge.bronze{background:linear-gradient(135deg,#D97706,#78350F);color:#FEF3C7}
+.lb-thumb .rank-badge{top:3px;left:3px;min-width:20px;height:20px;padding:0 5px;border-radius:10px;
+                      font-size:0.68rem;border-width:1.5px}
 .lb-row:last-child{border-bottom:none}
 .lb-row:hover{background:#f8fafc}
 .lb-rank{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;
@@ -211,6 +237,19 @@ details.raw.deep-dive>summary:hover{background:#e1ecf9;color:var(--navy)}
 
 @media(max-width:620px){
   .lb-row{grid-template-columns:34px minmax(0,1fr) max-content}
+  .lb-row.has-thumb{grid-template-columns:64px minmax(0,1fr) max-content}
+  .lb-thumb{width:64px;height:48px}
+  /* photo floats right; header text, badges, note and summary all wrap around it */
+  .ad-lead.has-photo{display:flow-root;padding:0}
+  .ad-thumb{float:right;width:112px;height:84px;min-height:0;max-height:none;margin:15px 20px 6px 12px}
+  .ad-thumb .rank-badge{left:auto;right:4px}
+  .ad-lead.has-photo .ad-header{display:block;padding:15px 20px 0}
+  .ad-lead.has-photo .ad-title,.ad-lead.has-photo .ad-meta{display:block}
+  .ad-lead.has-photo .ad-title .badge,.ad-lead.has-photo .ad-title .site-link,
+  .ad-lead.has-photo .ad-meta>*{display:inline-block;vertical-align:middle;margin:3px 8px 3px 0}
+  .ad-lead.has-photo .ad-body{display:block}
+  .ad-lead.has-photo .ad-verdict-note{display:flow-root;margin:0 0 10px}   /* sits beside the float, not under it */
+  .ad-lead.has-photo .ad-summary{margin:0}
   .lb-score,.lb-price{display:none}
 }
 </style>
@@ -252,15 +291,22 @@ details.raw.deep-dive>summary:hover{background:#e1ecf9;color:var(--navy)}
     {% set lb_max_visible = 3 %}
     {% set lb_hidden_count = ads|length - lb_max_visible %}
     {% set lb_use_spoiler = lb_hidden_count > 2 %}
+    {# photo column only if at least one ad has a photo; rows without one keep an empty placeholder box so columns stay aligned #}
+    {% set lb_has_thumbs = ads|selectattr('image_thumb')|list|length > 0 %}
     {% for ad in ads %}
       {% if lb_use_spoiler and loop.index == lb_max_visible + 1 %}
       <div class="lb-spoiler" id="lb-spoiler">
         <div class="lb-spoiler-rows" id="lb-spoiler-rows">
       {% endif %}
-    <div class="lb-row" id="lb-{{ loop.index0 }}">
+    <div class="lb-row{% if lb_has_thumbs %} has-thumb{% endif %}" id="lb-{{ loop.index0 }}">
+      {% if lb_has_thumbs %}
+      {# rank lives on the photo's corner (placeholder box for photo-less rows) #}
+      <div class="lb-thumb">{% if ad.image_thumb %}<a href="{{ ad.url }}" target="_blank" tabindex="-1"><img src="{{ ad.image_thumb }}" alt="{{ ad.title }}" width="72" height="54" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.style.display='none'"></a>{% endif %}<span class="rank-badge {% if loop.index==1 %}gold{% elif loop.index==2 %}silver{% elif loop.index==3 %}bronze{% endif %}">{{ loop.index }}</span></div>
+      {% else %}
       <div class="lb-rank {% if loop.index==1 %}gold{% elif loop.index==2 %}silver{% elif loop.index==3 %}bronze{% endif %}">
         #{{ loop.index }}
       </div>
+      {% endif %}
       <div class="lb-info">
         <a href="{{ ad.url }}" target="_blank" class="lb-title-link">
           <div class="lb-title">{{ ad.title }}</div>
@@ -318,8 +364,14 @@ details.raw.deep-dive>summary:hover{background:#e1ecf9;color:var(--navy)}
   <div class="ads-section">
   {% for ad in ads %}
   <div class="ad-card {{ ad.verdict }}" id="ad-{{ loop.index0 }}">
+    <div class="ad-lead{% if ad.image_medium %} has-photo{% endif %}">
+    {% if ad.image_medium %}
+    <div class="ad-thumb"><a href="{{ ad.url }}" target="_blank" tabindex="-1"><img src="{{ ad.image_medium }}" alt="{{ ad.title }}" width="160" height="108" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.style.display='none'"></a><span class="rank-badge {% if loop.index==1 %}gold{% elif loop.index==2 %}silver{% elif loop.index==3 %}bronze{% endif %}">{{ loop.index }}</span></div>
+    {% endif %}
     <div class="ad-header">
+      {% if not ad.image_medium %}
       <div class="rank-circle {% if loop.index==1 %}gold{% elif loop.index==2 %}silver{% elif loop.index==3 %}bronze{% endif %}">{{ loop.index }}</div>
+      {% endif %}
       <div class="ad-title-group">
         <div class="ad-title">
           {{ ad.title }}
@@ -328,7 +380,7 @@ details.raw.deep-dive>summary:hover{background:#e1ecf9;color:var(--navy)}
         </div>
         <div class="ad-meta">
           {% if ad.asking_price %}<span class="ad-price">{{ ad.asking_price }}</span>{% endif %}
-          {% if ad.price_per_m2 %}<span class="ad-rating-text">{{ ad.price_per_m2 }}/m²</span>{% endif %}
+          {% if ad.price_per_m2 %}<span class="ad-rating-text">{{ ad.price_per_m2 }}</span>{% endif %}
           {% if ad.price_assessment != 'unknown' %}<span class="badge {{ ad.price_assessment }}">{{ t(ad.price_assessment_label) }}</span>{% endif %}
           <span class="ad-rating-text">⭐ {{ ad.rating }}/10</span>
         </div>
@@ -338,6 +390,7 @@ details.raw.deep-dive>summary:hover{background:#e1ecf9;color:var(--navy)}
       {% if ad.verdict_note %}<p class="ad-verdict-note">{{ ad.verdict_note }}</p>{% endif %}
       {% if ad.summary %}<p class="ad-summary">{{ ad.summary }}</p>{% endif %}
     </div>
+    </div><!-- /.ad-lead -->
     {% if ad.spec_items %}
     <div class="ad-specs">
       {% for item in ad.spec_items %}

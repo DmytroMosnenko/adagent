@@ -196,6 +196,47 @@ _PARAM_LABEL_VALUE: tuple[tuple[str, str], ...] = (
      '.parameterValue, strong'),
 )
 
+# Where to read the ad's main photo URL from, per site: (CSS selector, attribute).
+# Tried in order; the first value that passes _valid_image_url() wins. Read with
+# page.get_attribute(), which needs no visibility and never loads the image
+# (images stay blocked — see _BLOCKED_RESOURCE_TYPES).
+# NOTE: og:image is the primary source on every site, but it was NOT verified
+# against a real ad page for any of them (the saved dumps are listing pages,
+# where og:image is the site logo on Otomoto/Otodom and absent on OLX).
+# If a site's ad pages turn out to need something else, add it here.
+_IMAGE_SOURCES: dict[str, tuple[tuple[str, str], ...]] = {
+    "olx":     (('meta[property="og:image"]', "content"),
+                ('meta[name="twitter:image"]', "content"),
+                ('link[rel="image_src"]', "href")),
+    "otomoto": (('meta[property="og:image"]', "content"),
+                ('meta[name="twitter:image"]', "content"),
+                ('link[rel="image_src"]', "href")),
+    "otodom":  (('meta[property="og:image"]', "content"),
+                ('meta[name="twitter:image"]', "content"),
+                ('link[rel="image_src"]', "href")),
+}
+_IMAGE_ATTR_TIMEOUT = 1_000   # ms per selector — a missing <meta> must not stall the ad
+
+# Real ad photos are served from the OLX-group CDN (ireland.apollo.olxcdn.com —
+# confirmed on Otomoto and Otodom). Anything else (e.g. statics.otomoto.pl/…/
+# fb-image200x200.png, the site logo og:image on listing pages) is only
+# accepted if it doesn't look like a logo / generic placeholder.
+_PHOTO_CDN_HOST_RE = re.compile(r"(^|\.)olxcdn\.com$", re.IGNORECASE)
+_PLACEHOLDER_IMAGE_RE = re.compile(
+    r"fb-image|/static/img/|logo|placeholder|no[-_]?(?:photo|image|img)|"
+    r"default[-_]?(?:image|og|photo)|og-image|\.svg(?:$|\?)",
+    re.IGNORECASE,
+)
+_IMAGE_URL_MAX_LEN = 2_048
+
+# CDN size parameter, e.g. ".../image;s=216x152;q=50" (OLX) or ".../image;s=644x461"
+# (Otomoto) or ".../image;s=655x491;q=80" (Otodom). Seen with many different
+# W×H on the same file id in the saved dumps, so we can ask for a smaller one.
+_CDN_SIZE_RE = re.compile(r"(/image;s=)\d+x\d+")
+_IMG_SIZE_THUMB  = "200x150"   # leaderboard (shown ~64×48)
+_IMG_SIZE_MEDIUM = "360x270"   # detail card (shown ~128×96)
+
+
 _UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
@@ -240,6 +281,42 @@ _PROMOTED_URL_RE = re.compile(r"^https?://[^/]*otodom\.pl/hpr/", re.IGNORECASE)
 def _is_promoted_url(url: str) -> bool:
     """True for sponsored slots that are not genuine filter matches."""
     return bool(_PROMOTED_URL_RE.match(url))
+
+
+def _valid_image_url(raw: Optional[str], base: str) -> str:
+    """
+    Normalise a scraped image URL and return it, or "" when it is unusable:
+    not absolute https, too long, or a site logo / generic placeholder.
+    Never raises.
+    """
+    raw = (raw or "").strip().replace("&amp;", "&")
+    if not raw or len(raw) > _IMAGE_URL_MAX_LEN:
+        return ""
+    url = _absolute(raw, base)
+    if not url.startswith("https://"):
+        return ""
+    parsed = urlparse(url)
+    if not parsed.hostname:
+        return ""
+    if _PHOTO_CDN_HOST_RE.search(parsed.hostname):
+        return url      # user-photo CDN: ids are opaque, don't pattern-match them
+    if _PLACEHOLDER_IMAGE_RE.search(url):
+        return ""
+    return url
+
+
+def _resize_image_url(url: str, size: str) -> str:
+    """
+    Swap the "/image;s=WxH" size parameter of an OLX-group CDN URL for `size`
+    (e.g. "200x150"). Any other URL is returned unchanged, so a site whose
+    photos aren't resizable simply gets the original image.
+    """
+    if not url:
+        return ""
+    parsed = urlparse(url)
+    if not (parsed.hostname and _PHOTO_CDN_HOST_RE.search(parsed.hostname)):
+        return url
+    return _CDN_SIZE_RE.sub(lambda m: m.group(1) + size, url, count=1)
 
 
 def _next_page_by_url(url: str) -> str:
@@ -960,6 +1037,28 @@ async def _get_full_page_text(page) -> str:
         return ""
 
 
+async def _extract_image_url(page, url: str, site: str) -> str:
+    """
+    Return the ad's main photo URL (absolute https), or "" if none could be
+    found / validated. Reads attributes only — the image itself is never
+    loaded — and never raises: a missing photo must not fail the ad.
+    """
+    base = _origin(url)
+    for sel, attr in _IMAGE_SOURCES.get(site, _IMAGE_SOURCES["olx"]):
+        try:
+            raw = await page.get_attribute(sel, attr, timeout=_IMAGE_ATTR_TIMEOUT)
+        except Exception:
+            continue
+        image_url = _valid_image_url(raw, base)
+        if image_url:
+            logger.debug("[scraper] image_url ← %s (%s)", image_url[:80], sel)
+            return image_url
+        if raw:
+            logger.debug("[scraper] rejected image candidate %r from %s on %s", raw[:80], sel, url)
+    logger.debug("[scraper] no usable image on %s", url)
+    return ""
+
+
 # ── Public API ─────────────────────────────────────────────────────────────────
 
 async def collect_all_links(filter_url: str, report_id: str) -> tuple[list[str], str]:
@@ -1355,6 +1454,14 @@ async def _extract_one(url: str, ctx, PWTimeout) -> dict:
             if len(data) <= 2:
                 logger.debug("[scraper] using raw body fallback for %s", url)
                 data["raw_text"] = data.get("page_text", "")[:5_000]
+
+            # ── Ad photo URL ─────────────────────────────────────────────────
+            # Deliberately LAST: the "all fields failed" (len(data) == 1) and
+            # raw_text (len(data) <= 2) checks above count keys in `data`, so
+            # adding image_url any earlier would silently disable them.
+            image_url = await _extract_image_url(page, url, site)
+            if image_url:
+                data["image_url"] = image_url
 
             logger.info("[scraper] extracted %d fields from %s", len(data), url)
             return data

@@ -561,3 +561,98 @@ class TestShortReason:
         )
         assert "Pristine condition one owner" in html
         assert "lb-reason" in html
+
+
+class TestAdThumbnails:
+    """image_url → leaderboard thumb + detail-card photo (hotlinked, lazy, safe)."""
+
+    PHOTO = "https://ireland.apollo.olxcdn.com/v1/files/0d9nrq0g79or-OTOMOTOPL/image;s=1280x1024;q=80"
+
+    @staticmethod
+    def _result(n, image_url=None, host="https://www.olx.pl"):
+        data = {"title": f"Ad {n}", "price": "10 000 zł"}
+        if image_url:
+            data["image_url"] = image_url
+        return {
+            "url": f"{host}/d/oferta/ad-{n}.html", "data": data,
+            "analysis": '{"rating": %d, "verdict": "maybe", "verdict_note": "n", "summary": "s"}' % (9 - n),
+        }
+
+    @staticmethod
+    def _render(results):
+        return build_html_report(
+            results=results, summary_text="{}", filter_url="https://www.olx.pl/x",
+            report_id="r1", ads_found=len(results), is_limited=False,
+            template_dir="templates",
+        )
+
+    def test_prepare_ad_passes_image_through_with_resized_variants(self):
+        ad = _prepare_ad(self._result(1, self.PHOTO))
+        assert ad["image_url"] == self.PHOTO
+        assert "/image;s=200x150;q=80" in ad["image_thumb"]
+        assert "/image;s=360x270;q=80" in ad["image_medium"]
+
+    def test_prepare_ad_without_image(self):
+        ad = _prepare_ad(self._result(1))
+        assert ad["image_url"] == ad["image_thumb"] == ad["image_medium"] == ""
+
+    def test_non_cdn_url_used_as_is(self):
+        u = "https://img.example.com/p.jpg"
+        ad = _prepare_ad(self._result(1, u))
+        assert ad["image_thumb"] == ad["image_medium"] == u
+
+    def test_renders_thumbnail_and_detail_image(self):
+        html = self._render([self._result(1, self.PHOTO), self._result(2, self.PHOTO)])
+        assert html.count('class="lb-thumb"') == 2
+        assert html.count('class="ad-thumb"') == 2
+        assert "image;s=200x150;q=80" in html and "image;s=360x270;q=80" in html
+        for attr in ('loading="lazy"', 'referrerpolicy="no-referrer"',
+                     'width="72" height="54"', 'width="160" height="108"',
+                     "onerror=", 'alt="Ad 1"'):
+            assert attr in html
+        assert "lb-row has-thumb" in html
+        # rank moves onto the photo: badge per photo, no separate rank column/circle
+        assert html.count('class="rank-badge') == 4
+        assert 'class="lb-rank' not in html and 'class="rank-circle' not in html
+
+    def test_renders_without_any_image(self):
+        html = self._render([self._result(1), self._result(2)])
+        assert "<img" not in html.split("</style>", 1)[1]
+        assert 'class="lb-thumb"' not in html and 'class="ad-thumb"' not in html
+        assert "has-thumb" not in html.split("</style>", 1)[1]
+        assert "Ad 1" in html
+        # photo-less reports keep the original rank column / circle
+        assert 'class="lb-rank' in html and 'class="rank-circle' in html
+        assert "rank-badge " not in html.split("</style>", 1)[1]
+
+    def test_mixed_keeps_columns_aligned_and_no_broken_img(self):
+        html = self._render([self._result(1, self.PHOTO), self._result(2)])
+        assert html.count('class="lb-thumb"') == 2        # placeholder box for the photo-less row
+        assert html.count("<img") == 2 and html.count('class="ad-thumb"') == 1
+
+    def test_image_url_is_escaped(self):
+        html = self._render([self._result(1, 'https://img.example.com/a.jpg?x="><script>alert(1)</script>')])
+        assert "<script>alert(1)" not in html
+
+    def test_mobile_override_covers_thumb_grid(self):
+        css = open("templates/report.html.j2", encoding="utf-8").read()
+        assert ".lb-row.has-thumb{grid-template-columns:64px minmax(0,1fr) max-content}" in css
+
+
+class TestPricePerM2Unit:
+    @pytest.mark.parametrize("raw,expected", [
+        ("8588,24 zł/m²", "8588,24 zł/m²"),
+        ("5129.35 zł/m2", "5129.35 zł/m2"),
+        ("8588 zł", "8588 zł/m²"),
+        (8588, "8588/m²"),
+        ("", ""), (None, ""),
+    ])
+    def test_unit_not_duplicated(self, raw, expected):
+        from service.report_builder import _with_m2_unit
+        assert _with_m2_unit(raw) == expected
+
+    def test_rendered_once(self):
+        r = TestAdThumbnails._result(1)
+        r["analysis"] = '{"rating": 7, "verdict": "maybe", "price_per_m2": "8588,24 zł/m²"}'
+        html = TestAdThumbnails._render([r])
+        assert "8588,24 zł/m²</span>" in html and "m²/m²" not in html

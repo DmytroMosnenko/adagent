@@ -28,6 +28,11 @@
     <p class="section-title">📋 Per-ad analyses ({{ ads|length }})</p>
     {% for ad in ads %}
     <div class="analysis-block">
+      {% if ad.image_url %}
+      <img src="{{ ad.image_url }}" alt="{{ ad.url }}" width="120" height="90" loading="lazy"
+           referrerpolicy="no-referrer" onerror="this.style.display='none'"
+           style="float:left;margin:0 12px 8px 0;width:120px;height:90px;object-fit:cover;border-radius:6px;background:#e2e8f0">
+      {% endif %}
       <div class="analysis-url">
         <a href="{{ ad.url }}" target="_blank">{{ ad.url }}</a>
       </div>

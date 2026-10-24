@@ -221,7 +221,12 @@ async def run_analysis(report_id: str) -> None:
         else:
             # Custom prompts, or a preset with output="raw" (e.g. vehicles_detailed) — store JSON
             payload = json.dumps({
-                "ads": [{"url": r["url"], "analysis": r["analysis"]} for r in results],
+                "ads": [
+                    {"url": r["url"], "analysis": r["analysis"],
+                     # only when the scraper found a photo — keeps the old shape otherwise
+                     **({"image_url": r["data"]["image_url"]} if r["data"].get("image_url") else {})}
+                    for r in results
+                ],
                 "summary": summary_text,
             }, ensure_ascii=False)
 

@@ -14,7 +14,7 @@
   </div>
   {% endif %}
 
-  <div class="card" style="padding:0;overflow:hidden">
+  <div class="card history-card">
     {% if reports %}
     <table class="history">
       <thead>
@@ -30,19 +30,16 @@
       <tbody>
         {% for r in reports %}
         <tr>
-          <td style="white-space:nowrap;color:var(--muted)">
-            {{ r.created_at.strftime('%d %b %Y') }}
+          <td class="h-date">{{ r.created_at.strftime('%d %b %Y') }}</td>
+          <td class="h-url">
+            <a href="{{ r.filter_url }}" target="_blank" rel="noopener" title="{{ r.filter_url }}">{{ r.filter_url }}</a>
           </td>
-          <td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
-            <a href="{{ r.filter_url }}" target="_blank" title="{{ r.filter_url }}"
-               style="color:var(--muted);font-size:0.82rem">{{ r.filter_url }}</a>
-          </td>
-          <td>{{ t(r.prompt_preset | default('custom') | capitalize) }}</td>
-          <td>
+          <td class="h-preset">{{ t(r.prompt_preset | default('custom') | capitalize) }}</td>
+          <td class="h-ads" data-label="{{ t('Ads') }}">
             {% if r.ads_analyzed %}{{ r.ads_analyzed }}{% if r.is_limited %}<span style="color:var(--amber)">*</span>{% endif %}{% else %}—{% endif %}
           </td>
-          <td><span class="status-badge {{ r.status }}">{{ t(r.status) }}</span></td>
-          <td>
+          <td class="h-status"><span class="status-badge {{ r.status }}">{{ t(r.status) }}</span></td>
+          <td class="h-action">
             {% if r.status == 'done' %}
             <a href="/report/{{ r.id }}" class="btn btn-outline"
                style="padding:5px 12px;font-size:0.8rem">{{ t("View") }}</a>

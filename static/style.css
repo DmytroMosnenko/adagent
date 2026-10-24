@@ -147,6 +147,42 @@ table.history th { text-align: left; padding: 9px 12px; color: var(--muted);
 table.history td { padding: 11px 12px; border-bottom: 1px solid var(--border); }
 table.history tr:last-child td { border-bottom: none; }
 
+.card.history-card { padding: 0; overflow: hidden; }
+table.history td.h-date { white-space: nowrap; color: var(--muted); }
+table.history td.h-url  { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+table.history td.h-url a { color: var(--muted); font-size: 0.82rem; }
+
+/* Mobile: each table row becomes a compact card, so nothing is clipped */
+@media (max-width: 640px) {
+  table.history, table.history tbody { display: block; width: 100%; }
+  table.history thead { display: none; }
+  table.history tr {
+    display: grid;
+    grid-template-columns: auto auto 1fr;
+    grid-template-areas:
+      "date   date ads"
+      "url    url  url"
+      "preset status action";
+    align-items: center;
+    gap: 8px 12px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  table.history tr:last-child { border-bottom: none; }
+  table.history td { display: block; padding: 0; border: none; min-width: 0; }
+  table.history td.h-date   { grid-area: date; font-weight: 600; color: var(--text); font-size: 0.9rem; }
+  table.history td.h-ads    { grid-area: ads; justify-self: end; font-size: 0.82rem; color: var(--muted); }
+  table.history td.h-ads::before { content: attr(data-label) ": "; }
+  table.history td.h-url    { grid-area: url; max-width: none; background: #f8fafc;
+                              border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; }
+  table.history td.h-url a  { display: block; overflow: hidden; text-overflow: ellipsis;
+                              white-space: nowrap; font-size: 0.78rem; }
+  table.history td.h-preset { grid-area: preset; font-size: 0.82rem; color: var(--muted); }
+  table.history td.h-status { grid-area: status; }
+  table.history td.h-action { grid-area: action; justify-self: end; }
+  table.history td.h-action:empty { display: none; }
+}
+
 .status-badge { display: inline-block; padding: 2px 8px; border-radius: 10px;
                 font-size: 0.72rem; font-weight: 700; }
 .status-badge.done    { background: var(--green-bg); color: var(--green); }

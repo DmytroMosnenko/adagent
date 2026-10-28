@@ -1,0 +1,11 @@
+[Unit]
+Description=Send the AdAgent funnel report every morning
+
+[Timer]
+# Reports on the previous full day in REPORT_TIMEZONE (Europe/Warsaw by default).
+OnCalendar=*-*-* 01:00:00 Europe/Warsaw
+RandomizedDelaySec=120
+Persistent=true
+
+[Install]
+WantedBy=timers.target

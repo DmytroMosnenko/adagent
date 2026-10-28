@@ -394,4 +394,12 @@ PL: dict[str, str] = {
     # ── Stripe Checkout text ──
     "By subscribing you accept the [Terms of Service]({terms}) and the [Privacy Policy]({privacy}), and you ask for the digital service to start immediately, acknowledging that you lose your right of withdrawal once it has begun.":
         "Subskrybując, akceptujesz [Regulamin]({terms}) i [Politykę prywatności]({privacy}) oraz wyrażasz zgodę na natychmiastowe rozpoczęcie świadczenia usługi cyfrowej, przyjmując do wiadomości, że po jej rozpoczęciu tracisz prawo do odstąpienia od umowy.",
+    # ── landing: instant demo / OLX app helper ──
+    "See a finished report in 2 seconds": "Zobacz gotowy raport w 2 sekundy",
+    "No link needed — pick an example search:": "Bez wklejania linku — wybierz przykładowe wyszukiwanie:",
+    "Red flags": "Czerwone flagi",
+    "Positives": "Plusy",
+    "Sample data for illustration — not a live search.": "Dane przykładowe, ilustracyjne — to nie jest wyszukiwanie na żywo.",
+    "Get this report for my own search →": "Chcę taki raport dla mojego wyszukiwania →",
+    "In the OLX app: Share → Copy link": "W aplikacji OLX: Udostępnij → Kopiuj link",
 }

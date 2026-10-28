@@ -1,6 +1,6 @@
 from datetime import datetime
 from sqlalchemy import (
-    BINARY,
+    BINARY, BigInteger,
     Column, String, Integer, Boolean, DateTime, Text, Enum,
     ForeignKey, Index, text
 )
@@ -134,3 +134,34 @@ class Report(Base):
     created_at            = Column(DateTime, server_default=text("CURRENT_TIMESTAMP"))
     finished_at           = Column(DateTime, nullable=True)
     error_message         = Column(Text, nullable=True)
+
+
+class FunnelEvent(Base):
+    """
+    Anonymous landing-page funnel event (see service/funnel.py for the privacy
+    design). No IP, no cookie, no full URL: `sid` is a random per-tab id,
+    `url_host`/`url_label` are a hostname and a coarse pattern label only.
+    created_at is naive UTC, like the rest of the app's comparisons.
+    """
+    __tablename__ = "funnel_events"
+
+    id           = Column(BigInteger().with_variant(Integer, "sqlite"),
+                          primary_key=True, autoincrement=True)
+    created_at   = Column(DateTime, nullable=False, default=datetime.utcnow)
+    sid          = Column(String(32), nullable=True)
+    event        = Column(String(32), nullable=False)
+    has_gclid    = Column(Boolean, nullable=True)
+    device       = Column(String(8), nullable=False, default="other")   # mobile|desktop|other
+    ui_lang      = Column(String(4), nullable=True)
+    utm_source   = Column(String(64), nullable=True)
+    utm_campaign = Column(String(128), nullable=True)
+    ref_host     = Column(String(128), nullable=True)
+    url_host     = Column(String(16), nullable=True)
+    url_label    = Column(String(48), nullable=True)
+    detail       = Column(String(64), nullable=True)   # example id / invalid reason / report id
+
+    __table_args__ = (
+        Index("ix_funnel_created_event", "created_at", "event"),
+        Index("ix_funnel_sid", "sid"),
+        Index("ix_funnel_event_detail", "event", "detail"),
+    )

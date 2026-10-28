@@ -1,10 +1,10 @@
 from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Optional
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .models import User, Session, MagicLink, Subscription, Report
+from .models import User, Session, MagicLink, Subscription, Report, FunnelEvent
 
 
 # ── Users ──────────────────────────────────────────────────────────────────────
@@ -250,3 +250,46 @@ async def fail_stale_reports(db: AsyncSession) -> None:
         .values(status="failed", error_message="Server restarted during analysis.")
     )
     await db.commit()
+
+
+# ── Funnel events ──────────────────────────────────────────────────────────────
+
+async def add_funnel_event(db: AsyncSession, **fields) -> None:
+    fields.setdefault("created_at", datetime.now(timezone.utc).replace(tzinfo=None))
+    db.add(FunnelEvent(**fields))
+    await db.commit()
+
+
+async def get_funnel_landing(db: AsyncSession, sid: str) -> Optional[FunnelEvent]:
+    """First landing row of a session — source of has_gclid/utm for server-side events."""
+    r = await db.execute(
+        select(FunnelEvent)
+        .where(FunnelEvent.sid == sid, FunnelEvent.event == "landing")
+        .order_by(FunnelEvent.id).limit(1)
+    )
+    return r.scalar_one_or_none()
+
+
+async def get_funnel_event_by_detail(db: AsyncSession, event: str, detail: str) -> Optional[FunnelEvent]:
+    r = await db.execute(
+        select(FunnelEvent)
+        .where(FunnelEvent.event == event, FunnelEvent.detail == detail)
+        .order_by(FunnelEvent.id).limit(1)
+    )
+    return r.scalar_one_or_none()
+
+
+async def get_funnel_events(db: AsyncSession, start: datetime, end: datetime) -> list[FunnelEvent]:
+    """Events with start <= created_at < end (naive UTC)."""
+    r = await db.execute(
+        select(FunnelEvent)
+        .where(FunnelEvent.created_at >= start, FunnelEvent.created_at < end)
+        .order_by(FunnelEvent.id)
+    )
+    return list(r.scalars().all())
+
+
+async def purge_funnel_events(db: AsyncSession, before: datetime) -> int:
+    r = await db.execute(delete(FunnelEvent).where(FunnelEvent.created_at < before))
+    await db.commit()
+    return int(r.rowcount or 0)

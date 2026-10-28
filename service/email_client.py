@@ -11,6 +11,7 @@ Public API (``lang`` is optional, "en" or "pl"; defaults to English):
   await send_magic_link(email, token, lang) -> bool
   await send_subscription_welcome(email, token, lang, ttl_minutes) -> bool
   await send_report_ready(email, report_id, status, lang) -> bool
+  await send_funnel_report(to, subject, body_text, body_html) -> bool   (admin only, English)
 """
 from __future__ import annotations
 
@@ -225,3 +226,8 @@ async def send_subscription_welcome(
 </body></html>"""
 
     return await asyncio.to_thread(_send, email, subject, body_text, body_html)
+
+
+async def send_funnel_report(to: str, subject: str, body_text: str, body_html: str) -> bool:
+    """Daily funnel counters for the site owner (ADMIN_EMAIL). Pre-rendered by service.funnel."""
+    return await asyncio.to_thread(_send, to, subject, body_text, body_html)

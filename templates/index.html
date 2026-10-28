@@ -40,6 +40,57 @@
   <div class="alert alert-error">{{ error }}</div>
   {% endif %}
 
+  {% set L = ui_lang if ui_lang in ('pl', 'en') else 'en' %}
+  <!-- Instant demo: pre-generated examples, rendered server-side (no request, no LLM cost per click).
+       Without JS the pick links are #anchors and CSS :target opens the panel. -->
+  <section class="card demo" id="demo" aria-labelledby="demo-h">
+    <h2 class="demo-h" id="demo-h"><span class="shot-chip">{{ t("Example") }}</span>{{ t("See a finished report in 2 seconds") }}</h2>
+    <p class="demo-sub">{{ t("No link needed — pick an example search:") }}</p>
+    <div class="demo-picks">
+      {% for ex in demo_examples %}
+      <a class="demo-pick" href="#demo-{{ ex.id }}" data-demo-pick="{{ ex.id }}"
+         aria-controls="demo-{{ ex.id }}" aria-expanded="false">
+        <span class="demo-pick-ico" aria-hidden="true">{{ ex.icon }}</span><span>{{ ex.title[L] }}</span>
+      </a>
+      {% endfor %}
+    </div>
+
+    {% for ex in demo_examples %}
+    <div class="demo-panel" id="demo-{{ ex.id }}" role="region" aria-label="{{ ex.title[L] }}">
+      <p class="demo-meta"><span class="shot-chip">{{ t("Example") }}</span>{{ ex.query[L] }}</p>
+      <ol class="demo-rows">
+        {% for r in ex.rows %}
+        {% set vc = {'worth_viewing': 'g', 'maybe': 'a', 'skip': 'r'}[r.verdict] %}
+        <li class="demo-row">
+          <span class="demo-rank">{{ loop.index }}</span>
+          <div>
+            <b class="demo-title">{{ r.title }}</b>
+            <span class="demo-reason">{{ r.reason[L] }}</span>
+            <span class="demo-pills">
+              <em class="demo-pill {{ vc }}">{{ t({'worth_viewing': 'Worth Viewing', 'maybe': 'Maybe', 'skip': 'Skip'}[r.verdict]) }}</em>
+              <em class="demo-pill {{ 'g' if r.price_tag == 'fair' else 'r' }}">{{ t('Fair price' if r.price_tag == 'fair' else 'High price') }}</em>
+            </span>
+          </div>
+          <div class="demo-side">
+            <b class="demo-score {{ vc }}">{{ '%.1f'|format(r.score) }}</b>
+            <span class="demo-price">{{ '{:,}'.format(r.price)|replace(',', '\u00a0') }}&nbsp;PLN</span>
+          </div>
+        </li>
+        {% endfor %}
+      </ol>
+      <p class="demo-summary"><b>{{ t("Market summary") }}:</b> {{ ex.summary[L] }}</p>
+      <div class="demo-top">
+        <div><h4>{{ t("Red flags") }} · #1</h4>
+          <ul class="flags">{% for x in ex.top.red_flags[L] %}<li>{{ x }}</li>{% endfor %}</ul></div>
+        <div><h4>{{ t("Positives") }} · #1</h4>
+          <ul class="pos">{% for x in ex.top.positives[L] %}<li>{{ x }}</li>{% endfor %}</ul></div>
+      </div>
+      <p class="demo-note">{{ t("Sample data for illustration — not a live search.") }}</p>
+      <a class="btn btn-green btn-full demo-cta" href="#filter_url" data-demo-cta="{{ ex.id }}">{{ t("Get this report for my own search →") }}</a>
+    </div>
+    {% endfor %}
+  </section>
+
   <div class="card">
     <form action="/analyze" method="post">
 
@@ -49,6 +100,7 @@
         <input class="form-input" type="url" id="filter_url" name="filter_url" required
                placeholder="https://www.olx.pl/motoryzacja/samochody/q-mini/">
         <p class="form-hint">{{ t("Open OLX, Otomoto or Otodom, set your filters (brand, price, year…), then copy the address from the browser bar and paste it here.") }}</p>
+        <p class="form-hint form-hint-app">📱 {{ t("In the OLX app: Share → Copy link") }}</p>
       </div>
 
       <!-- Preset selector -->
@@ -113,7 +165,7 @@
       <button type="submit" class="btn btn-primary btn-full">{{ t("Analyze →") }}</button>
       <p class="form-hint" style="text-align:center;margin-top:10px">{{ t("No sign-up needed for the free tier. Analysis takes about 5–10 minutes — you can close the tab and come back.") }}</p>
       {% if settings.SAMPLE_REPORT_URL %}
-      <p style="text-align:center;margin-top:6px"><a href="{{ settings.SAMPLE_REPORT_URL }}" target="_blank" rel="noopener">{{ t("See a sample report →") }}</a></p>
+      <p style="text-align:center;margin-top:6px"><a href="{{ settings.SAMPLE_REPORT_URL }}" target="_blank" rel="noopener" data-funnel="sample">{{ t("See a sample report →") }}</a></p>
       {% endif %}
     </form>
   </div>
@@ -151,7 +203,7 @@
     <!-- Real report screenshot -->
     <p class="shot-lead"><span class="shot-chip">{{ t("Example") }}</span> {{ t("What a finished report looks like") }}</p>
     <figure class="report-shot">
-      {% if settings.SAMPLE_REPORT_URL %}<a href="{{ settings.SAMPLE_REPORT_URL }}" target="_blank" rel="noopener">{% endif %}
+      {% if settings.SAMPLE_REPORT_URL %}<a href="{{ settings.SAMPLE_REPORT_URL }}" target="_blank" rel="noopener" data-funnel="sample">{% endif %}
       <div class="shot-frame">
         <div class="shot-bar"><i></i><i></i><i></i><span>{% set _host = settings.APP_BASE_URL|replace('https://','')|replace('http://','') %}{{ 'adagent.dimosense.com' if (_host.startswith('127.') or _host.startswith('localhost') or _host.startswith('0.0.0.0')) else _host }}/report/…</span></div>
         <picture>
@@ -163,7 +215,7 @@
         </picture>
       </div>
       {% if settings.SAMPLE_REPORT_URL %}</a>{% endif %}
-      <figcaption>{% if settings.SAMPLE_REPORT_URL %}<a href="{{ settings.SAMPLE_REPORT_URL }}" target="_blank" rel="noopener">{{ t("Open the full sample report →") }}</a>{% endif %}</figcaption>
+      <figcaption>{% if settings.SAMPLE_REPORT_URL %}<a href="{{ settings.SAMPLE_REPORT_URL }}" target="_blank" rel="noopener" data-funnel="sample">{{ t("Open the full sample report →") }}</a>{% endif %}</figcaption>
     </figure>
   </section>
 
@@ -252,4 +304,9 @@
     });
   });
 </script>
+<script src="/static/demo.js?v={{ settings.APP_VERSION }}" defer></script>
+{% if settings.FUNNEL_ENABLED %}
+<script>window.AA_FUNNEL = {endpoint: "/api/e", lang: {{ ui_lang|tojson }}};</script>
+<script src="/static/funnel.js?v={{ settings.APP_VERSION }}" defer></script>
+{% endif %}
 {% endblock %}

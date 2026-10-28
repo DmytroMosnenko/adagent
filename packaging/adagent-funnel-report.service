@@ -1,0 +1,18 @@
+[Unit]
+Description=AdAgent daily funnel report (e-mail to ADMIN_EMAIL)
+After=adagent.service
+Wants=adagent.service
+
+[Service]
+Type=oneshot
+User=adagent
+Group=adagent
+# INTERNAL_TOKEN comes from the same env file the app reads.
+EnvironmentFile=/opt/adagent/secrets/env
+# Loopback only — /internal/* is deliberately NOT exposed through nginx.
+# --fail makes a 4xx/5xx (e.g. e-mail could not be sent) fail the unit.
+ExecStart=/usr/bin/curl --fail --silent --show-error --max-time 120 -X POST \
+    -H "X-Internal-Token: ${INTERNAL_TOKEN}" \
+    http://127.0.0.1:8001/internal/funnel-report/email
+StandardOutput=append:/var/log/adagent/funnel_report.log
+StandardError=append:/var/log/adagent/funnel_report.log

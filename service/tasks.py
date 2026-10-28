@@ -10,7 +10,7 @@ from pathlib import Path
 
 from .config import settings
 from .db import async_session
-from . import crud, scraper, ai_client, report_builder, email_client
+from . import crud, scraper, ai_client, report_builder, email_client, funnel
 from .prompts_registry import PRESETS
 from .languages import build_language_instruction, build_language_reminder, strip_language_conflicts
 from .logger import get_logger
@@ -110,6 +110,7 @@ async def run_analysis(report_id: str) -> None:
                     error_message=message,
                     finished_at=datetime.now(timezone.utc).replace(tzinfo=None),
                 )
+            await funnel.record_report_outcome(async_session, report_id, "analyze_failed")
             await _maybe_notify_finished(report_id, "failed")
             return
 
@@ -220,6 +221,7 @@ async def run_analysis(report_id: str) -> None:
                     report_path=report_path,
                     finished_at=datetime.now(timezone.utc).replace(tzinfo=None),
                 )
+            await funnel.record_report_outcome(async_session, report_id, "analyze_done")
             await _maybe_notify_finished(report_id, "done")
         else:
             # Custom prompts, or a preset with output="raw" (e.g. vehicles_detailed) — store JSON
@@ -240,6 +242,7 @@ async def run_analysis(report_id: str) -> None:
                     result_json=payload,
                     finished_at=datetime.now(timezone.utc).replace(tzinfo=None),
                 )
+            await funnel.record_report_outcome(async_session, report_id, "analyze_done")
             await _maybe_notify_finished(report_id, "done")
 
         logger.info("[task] %s done", report_id)
@@ -253,4 +256,5 @@ async def run_analysis(report_id: str) -> None:
                 error_message=str(exc),
                 finished_at=datetime.now(timezone.utc).replace(tzinfo=None),
             )
+        await funnel.record_report_outcome(async_session, report_id, "analyze_failed")
         await _maybe_notify_finished(report_id, "failed")

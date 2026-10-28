@@ -340,6 +340,16 @@ All variables are read from `secrets/env` (production: `/opt/adagent/secrets/env
 | `PLAYWRIGHT_BROWSERS_PATH` | `/opt/adagent/.playwright` | Playwright browser cache |
 | `PLAYWRIGHT_HEADLESS` | `true` | Set `false` for visual debugging |
 
+### Funnel tracking / daily report
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `FUNNEL_ENABLED` | `true` | Anonymous landing-page funnel events (`static/funnel.js` → `POST /api/e`) |
+| `FUNNEL_RETENTION_DAYS` | `90` | Events older than this are purged by the daily report job |
+| `REPORT_TIMEZONE` | `Europe/Warsaw` | What "a day" means in the funnel report |
+| `ADMIN_EMAIL` | *(empty)* | Receives the daily funnel e-mail; empty = e-mail disabled |
+| `INTERNAL_TOKEN` | *(empty)* | Secret for `/internal/*` (loopback only, header `X-Internal-Token`); empty = endpoints disabled |
+
 ---
 
 ## Stripe setup
@@ -601,3 +611,18 @@ certbot renew --deploy-hook "systemctl reload nginx"
 curl https://adagent.dimosense.com/health
 # {"status":"ok","version":"0.1.0"}
 ```
+
+### Funnel report
+
+Landing-page events (landing, demo, URL paste, invalid link, analyze …) are stored in `funnel_events`
+(no cookies, no IP, no full URLs — only a host and a coarse label). Read them on the server:
+
+```bash
+TOKEN=$(sudo grep ^INTERNAL_TOKEN= /opt/adagent/secrets/env | cut -d= -f2-)
+curl -s -H "X-Internal-Token: $TOKEN" "http://127.0.0.1:8001/internal/funnel-report"                 # yesterday, text
+curl -s -H "X-Internal-Token: $TOKEN" "http://127.0.0.1:8001/internal/funnel-report?date=2026-10-27&days=7&format=json"
+```
+
+`adagent-funnel-report.timer` e-mails the same report to `ADMIN_EMAIL` every day at 07:00 Europe/Warsaw
+(`systemctl list-timers adagent-funnel-report`, logs in `/var/log/adagent/funnel_report.log`;
+run now with `systemctl start adagent-funnel-report.service`). `/internal/*` is deliberately not in the nginx allowlist.

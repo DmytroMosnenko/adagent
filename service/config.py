@@ -109,6 +109,16 @@ class Settings(BaseSettings):
     # (generate one, then set e.g. https://adagent.dimosense.com/report/<id>).
     SAMPLE_REPORT_URL: str = ""
 
+    # ── Funnel tracking / admin reporting ───────────────────────────────────────
+    # First-party, cookieless landing-page funnel (service/funnel.py, static/funnel.js).
+    FUNNEL_ENABLED: bool = True
+    FUNNEL_RETENTION_DAYS: int = 90          # rows older than this are purged by the daily report job
+    REPORT_TIMEZONE: str = "Europe/Warsaw"   # "a day" in the daily funnel report
+    ADMIN_EMAIL: str = ""                    # receives the daily funnel report; empty = email disabled
+    # Shared secret for /internal/* endpoints (sent as X-Internal-Token, loopback callers only).
+    # Empty = those endpoints are disabled (404).
+    INTERNAL_TOKEN: str = ""
+
     # ── Storage ────────────────────────────────────────────────────────────────
     REPORT_STORAGE_PATH: str = "/opt/adagent/report_storage"
 

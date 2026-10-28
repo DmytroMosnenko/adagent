@@ -20,6 +20,7 @@ from fastapi import (
 )
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.background import BackgroundTask
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,7 +30,8 @@ from service.logger import get_logger, setup_root_logging
 
 # Apply unified log formatting before any third-party loggers are configured
 setup_root_logging()
-from service import crud, auth, email_client, stripe_client, scraper, i18n
+from service import crud, auth, email_client, stripe_client, scraper, i18n, funnel
+from service.demo_data import DEMO_EXAMPLES
 from service.tasks import run_analysis
 
 logger = get_logger(__name__)
@@ -157,6 +159,7 @@ async def _render_index(request: Request, db: AsyncSession, session_token: Optio
     return _tpl("index.html", request, {
         "user": user, "subscribed": subscribed, "error": error_text,
         "default_language": default_language,
+        "demo_examples": DEMO_EXAMPLES,
     }, lang=lang)
 
 
@@ -267,11 +270,17 @@ async def analyze(
     custom_ad_prompt: Optional[str] = Form(default=None),
     custom_summary_prompt: Optional[str] = Form(default=None),
     report_language: Optional[str] = Form(default=None),
+    sid: Optional[str] = Form(default=None),     # per-tab funnel id, filled by static/funnel.js
 ):
     # Validate URL
     allowed_hosts = ("olx.pl", "otomoto.pl", "otodom.pl")
     filter_url = filter_url.strip()
     if not any(h in filter_url for h in allowed_hosts) or not filter_url.startswith("http"):
+        # Funnel: this redirect used to be silent. Written after the response is sent.
+        background_tasks.add_task(
+            funnel.record_server_event, None, "invalid_url", sid,
+            request.headers.get("user-agent"), detail=funnel.invalid_url_reason(filter_url),
+            url=filter_url, ui_lang=_ui_lang(request))
         return RedirectResponse(f"{_home(request)}?error=invalid_url", 303)
 
     # Validate preset
@@ -317,6 +326,12 @@ async def analyze(
         status="pending",
     )
 
+    # Must be queued BEFORE run_analysis: tasks run in order, and the done/failed
+    # outcome rows look this one up by report id to inherit the session attribution.
+    background_tasks.add_task(
+        funnel.record_server_event, None, "analyze_started", sid,
+        request.headers.get("user-agent"), detail=report.id, url=filter_url,
+        ui_lang=_ui_lang(request))
     background_tasks.add_task(run_analysis, report.id)
     return RedirectResponse(f"/report/{report.id}", status_code=303)
 
@@ -663,6 +678,107 @@ async def _handle_checkout_completed(db: AsyncSession, session: dict) -> None:
     lang = i18n.normalize(session.get("locale")) or "en"   # set by create_checkout_session
     await email_client.send_subscription_welcome(customer_email, token, lang, WELCOME_LINK_TTL_MINUTES)
     logger.info("[webhook] subscription created for %s plan=%s", customer_email, plan)
+
+
+# ── Funnel tracking ────────────────────────────────────────────────────────────
+
+# Per worker process, keyed by the keyed IP hash (never stored). nginx also limits
+# this path (packaging/adagent-nginx.conf); this is the second, app-level guard.
+_event_limiter = funnel.RateLimiter(limit=120, window=600)
+
+
+@app.post("/api/e", include_in_schema=False)
+async def funnel_ingest(request: Request):
+    """
+    Beacon target for static/funnel.js. Always answers 204 — to the browser a
+    tracking failure must be invisible — and does the DB write AFTER the response
+    (BackgroundTask), so it can neither slow down nor break a page.
+    """
+    try:
+        if not settings.FUNNEL_ENABLED:
+            return Response(status_code=204)
+        ua = request.headers.get("user-agent")
+        if funnel.is_bot(ua) or not _event_limiter.allow(_client_hash(request)):
+            return Response(status_code=204)
+        declared = request.headers.get("content-length", "")
+        if declared.isdigit() and int(declared) > funnel.MAX_BODY:
+            return Response(status_code=204)
+        body = bytearray()
+        async for chunk in request.stream():           # cap the read for chunked bodies too
+            body += chunk
+            if len(body) > funnel.MAX_BODY:
+                return Response(status_code=204)
+        fields = funnel.parse_client_event(bytes(body))
+        if not fields:
+            return Response(status_code=204)
+        return Response(status_code=204, background=BackgroundTask(
+            funnel.record, None, device=funnel.device_class(ua), **fields))
+    except Exception as exc:
+        logger.warning("[funnel] ingest failed: %s", exc)
+        return Response(status_code=204)
+
+
+# ── Internal (loopback + token) ────────────────────────────────────────────────
+
+def _require_internal(request: Request) -> None:
+    """
+    /internal/* is reachable only from this machine: the nginx allowlist does not
+    contain these paths (403 from outside), nginx always adds X-Real-IP so a request
+    that came through it is refused here as well, and the caller must send the shared
+    INTERNAL_TOKEN. With INTERNAL_TOKEN unset the endpoints do not exist (404).
+    """
+    token = settings.INTERNAL_TOKEN
+    ip = request.client.host if request.client else ""
+    if (not token or ip not in ("127.0.0.1", "::1")
+            or request.headers.get("x-real-ip") or request.headers.get("x-forwarded-for")):
+        raise HTTPException(404)
+    if not hmac.compare_digest(request.headers.get("x-internal-token", "").encode(), token.encode()):
+        raise HTTPException(403)
+
+
+async def _funnel_report(db: AsyncSession, day: Optional[str], days: int):
+    try:
+        start, end, label = funnel.day_window(day, days, settings.REPORT_TIMEZONE)
+    except ValueError:
+        raise HTTPException(400, "date must be YYYY-MM-DD")
+    rows = await crud.get_funnel_events(db, start, end)
+    return funnel.aggregate(rows), label
+
+
+@app.get("/internal/funnel-report", include_in_schema=False)
+async def funnel_report_view(
+    request: Request, db: AsyncSession = Depends(get_db),
+    date: Optional[str] = None, days: int = 1, format: str = "text",
+):
+    """Read the funnel: ?date=YYYY-MM-DD (default yesterday) &days=N &format=text|html|json."""
+    _require_internal(request)
+    report, label = await _funnel_report(db, date, days)
+    if format == "json":
+        return {"window": label, **report}
+    if format == "html":
+        return HTMLResponse(funnel.render_html(report, label))
+    return PlainTextResponse(funnel.render_text(report, label))
+
+
+@app.post("/internal/funnel-report/email", include_in_schema=False)
+async def funnel_report_email(
+    request: Request, db: AsyncSession = Depends(get_db),
+    date: Optional[str] = None, days: int = 1,
+):
+    """Called by the adagent-funnel-report systemd timer: build the report, mail it to
+    ADMIN_EMAIL, then purge events older than FUNNEL_RETENTION_DAYS."""
+    _require_internal(request)
+    if not settings.ADMIN_EMAIL:
+        raise HTTPException(503, "ADMIN_EMAIL is not set")
+    report, label = await _funnel_report(db, date, days)
+    sent = await email_client.send_funnel_report(
+        settings.ADMIN_EMAIL, f"AdAgent funnel — {label}",
+        funnel.render_text(report, label), funnel.render_html(report, label))
+    if not sent:
+        raise HTTPException(502, "Report e-mail could not be sent")    # makes the systemd unit fail
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=settings.FUNNEL_RETENTION_DAYS)
+    purged = await crud.purge_funnel_events(db, cutoff)
+    return {"ok": True, "window": label, "events": report["total_rows"], "purged": purged}
 
 
 # ── Health ─────────────────────────────────────────────────────────────────────

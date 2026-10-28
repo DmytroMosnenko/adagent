@@ -53,6 +53,10 @@ install -m 644 %{_sourcedir}/packaging/adagent-ssl_all_certs_renew.service \
                %{buildroot}%{_unitdir}/adagent-ssl_all_certs_renew.service
 install -m 644 %{_sourcedir}/packaging/adagent-ssl_all_certs_renew.timer \
                %{buildroot}%{_unitdir}/adagent-ssl_all_certs_renew.timer
+install -m 644 %{_sourcedir}/packaging/adagent-funnel-report.service \
+               %{buildroot}%{_unitdir}/adagent-funnel-report.service
+install -m 644 %{_sourcedir}/packaging/adagent-funnel-report.timer \
+               %{buildroot}%{_unitdir}/adagent-funnel-report.timer
 
 # nginx config
 install -d %{buildroot}/etc/nginx/conf.d
@@ -78,6 +82,8 @@ install -m 644 %{_sourcedir}/packaging/adagent-logrotate \
 %{_unitdir}/adagent-migrate.service
 %{_unitdir}/adagent-ssl_all_certs_renew.service
 %{_unitdir}/adagent-ssl_all_certs_renew.timer
+%{_unitdir}/adagent-funnel-report.service
+%{_unitdir}/adagent-funnel-report.timer
 /etc/nginx/conf.d/adagent.conf
 /etc/logrotate.d/adagent
 
@@ -130,6 +136,8 @@ systemctl enable adagent.service
 systemctl restart adagent.service
 systemctl enable adagent-ssl_all_certs_renew.timer
 systemctl start  adagent-ssl_all_certs_renew.timer
+systemctl enable adagent-funnel-report.timer
+systemctl start  adagent-funnel-report.timer
 
 echo ""
 echo "===================================================================="

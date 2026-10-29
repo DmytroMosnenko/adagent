@@ -347,6 +347,7 @@ All variables are read from `secrets/env` (production: `/opt/adagent/secrets/env
 | `FUNNEL_ENABLED` | `true` | Anonymous landing-page funnel events (`static/funnel.js` → `POST /api/e`) |
 | `FUNNEL_RETENTION_DAYS` | `90` | Events older than this are purged by the daily report job |
 | `REPORT_TIMEZONE` | `Europe/Warsaw` | What "a day" means in the funnel report |
+| `FUNNEL_EXCLUDE_EMAILS` | *(empty)* | Comma-separated own/test e-mails excluded from the funnel (see below) |
 | `ADMIN_EMAIL` | *(empty)* | Receives the daily funnel e-mail; empty = e-mail disabled |
 | `INTERNAL_TOKEN` | *(empty)* | Secret for `/internal/*` (loopback only, header `X-Internal-Token`); empty = endpoints disabled |
 
@@ -626,3 +627,14 @@ curl -s -H "X-Internal-Token: $TOKEN" "http://127.0.0.1:8001/internal/funnel-rep
 `adagent-funnel-report.timer` e-mails the same report to `ADMIN_EMAIL` every day at 07:00 Europe/Warsaw
 (`systemctl list-timers adagent-funnel-report`, logs in `/var/log/adagent/funnel_report.log`;
 run now with `systemctl start adagent-funnel-report.service`). `/internal/*` is deliberately not in the nginx allowlist.
+
+#### Excluding test users
+
+* Add their e-mails to `FUNNEL_EXCLUDE_EMAILS` (restart `adagent`). While signed in with such an account nothing
+  is recorded, and the browser is flagged `aa_notrack` in localStorage, so later signed-out visits from that browser
+  are not recorded either.
+* A browser that never signs in: open `https://adagent.dimosense.com/pl?notrack=1` once (`?notrack=0` undoes it).
+* Already-recorded events: the daily report job removes every session that started a report owned by an excluded
+  account; run it on demand with
+  `curl -s -X POST -H "X-Internal-Token: $TOKEN" http://127.0.0.1:8001/internal/funnel-report/purge-excluded`
+  (add `&sid=<32-hex>` to remove a specific session). Anonymous browsing that never led to a report can't be linked to an account.

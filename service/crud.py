@@ -293,3 +293,48 @@ async def purge_funnel_events(db: AsyncSession, before: datetime) -> int:
     r = await db.execute(delete(FunnelEvent).where(FunnelEvent.created_at < before))
     await db.commit()
     return int(r.rowcount or 0)
+
+
+async def get_user_ids_by_emails(db: AsyncSession, emails) -> list[int]:
+    if not emails:
+        return []
+    r = await db.execute(select(User.id).where(func.lower(User.email).in_(list(emails))))
+    return [row[0] for row in r.all()]
+
+
+async def get_report_ids_for_users(db: AsyncSession, user_ids: list[int]) -> list[str]:
+    """Hex report ids owned by these users (BinaryUUID already yields the 32-char hex form)."""
+    if not user_ids:
+        return []
+    r = await db.execute(select(Report.id).where(Report.user_id.in_(user_ids)))
+    return [row[0] for row in r.all()]
+
+
+async def get_funnel_sids_by_report_ids(db: AsyncSession, report_ids: list[str]) -> list[str]:
+    """Session ids that started one of these reports (analyze_started.detail = report id)."""
+    sids: set[str] = set()
+    for i in range(0, len(report_ids), 500):
+        r = await db.execute(
+            select(FunnelEvent.sid)
+            .where(FunnelEvent.event == "analyze_started",
+                   FunnelEvent.detail.in_(report_ids[i:i + 500]),
+                   FunnelEvent.sid.is_not(None))
+        )
+        sids.update(row[0] for row in r.all())
+    return sorted(sids)
+
+
+async def delete_funnel_events(db: AsyncSession, sids: list[str], report_ids: list[str]) -> int:
+    """Delete every event of these sessions, plus the report-bound events (started/done/failed,
+    matched by report id) which may have no sid when the visitor had JS off."""
+    deleted = 0
+    for i in range(0, len(sids), 500):
+        r = await db.execute(delete(FunnelEvent).where(FunnelEvent.sid.in_(sids[i:i + 500])))
+        deleted += int(r.rowcount or 0)
+    for i in range(0, len(report_ids), 500):
+        r = await db.execute(delete(FunnelEvent).where(
+            FunnelEvent.event.in_(("analyze_started", "analyze_done", "analyze_failed")),
+            FunnelEvent.detail.in_(report_ids[i:i + 500])))
+        deleted += int(r.rowcount or 0)
+    await db.commit()
+    return deleted

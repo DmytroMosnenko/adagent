@@ -12,6 +12,24 @@
   var cfg = window.AA_FUNNEL;
   if (!cfg || !cfg.endpoint) return;
 
+  // Opt-out for your own / test browsers: ?notrack=1 sets it, ?notrack=0 clears it, and a signed-in
+  // excluded account sets it from the page itself (see FUNNEL_EXCLUDE_EMAILS). Nothing is sent
+  // while it is set; the form gets sid="notrack" so the server drops /analyze events too.
+  var optedOut = false;
+  try {
+    var nt = new URLSearchParams(location.search).get("notrack");
+    if (nt === "1") localStorage.setItem("aa_notrack", "1");
+    else if (nt === "0") localStorage.removeItem("aa_notrack");
+    optedOut = localStorage.getItem("aa_notrack") === "1";
+  } catch (e) {}
+  if (optedOut) {
+    try {
+      var of = document.querySelector('form[action="/analyze"]');
+      if (of) { var oh = document.createElement("input"); oh.type = "hidden"; oh.name = "sid"; oh.value = "notrack"; of.appendChild(oh); }
+    } catch (e) {}
+    return;
+  }
+
   var mem = {};                                    // fallback when sessionStorage is blocked
   function get(k) { try { return sessionStorage.getItem(k); } catch (e) { return mem[k] || null; } }
   function set(k, v) { try { sessionStorage.setItem(k, v); } catch (e) { mem[k] = v; } }

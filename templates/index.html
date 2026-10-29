@@ -305,7 +305,9 @@
   });
 </script>
 <script src="/static/demo.js?v={{ settings.APP_VERSION }}" defer></script>
-{% if settings.FUNNEL_ENABLED %}
+{% if funnel_exclude %}
+<script>try { localStorage.setItem("aa_notrack", "1"); } catch (e) {}</script>
+{% elif settings.FUNNEL_ENABLED %}
 <script>window.AA_FUNNEL = {endpoint: "/api/e", lang: {{ ui_lang|tojson }}};</script>
 <script src="/static/funnel.js?v={{ settings.APP_VERSION }}" defer></script>
 {% endif %}

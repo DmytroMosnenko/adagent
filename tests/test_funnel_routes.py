@@ -227,3 +227,73 @@ async def test_landing_omits_tracker_when_disabled(client):
     with patch.object(settings, "FUNNEL_ENABLED", False):
         html = (await client.get("/pl")).text
     assert "funnel.js" not in html and 'id="demo"' in html
+
+
+# ── excluding own / test accounts ──────────────────────────────────────────────
+
+async def _signed_in(db, email):
+    user, _ = await crud.get_or_create_user(db, email)
+    token = "tok_" + email.replace("@", "_")
+    await crud.create_session(db, token, user.id, ttl_days=7)
+    return user, token
+
+
+@pytest.mark.asyncio
+async def test_excluded_account_landing_has_no_tracker_but_sets_optout_flag(client, db):
+    _, token = await _signed_in(db, "Tester@Example.com")
+    with patch.object(settings, "FUNNEL_EXCLUDE_EMAILS", "tester@example.com, other@example.com"):
+        html = (await client.get("/pl", cookies={"adagent_session": token})).text
+        anon = (await client.get("/pl")).text
+    assert "aa_notrack" in html and "funnel.js" not in html and 'id="demo"' in html
+    assert "funnel.js" in anon and "aa_notrack" not in anon
+
+
+@pytest.mark.asyncio
+async def test_excluded_account_beacons_and_analyze_events_are_dropped(client, db, funnel_db):
+    _, token = await _signed_in(db, "tester@example.com")
+    _, other = await _signed_in(db, "real@example.com")
+    with patch.object(settings, "FUNNEL_EXCLUDE_EMAILS", "tester@example.com"):
+        await client.post("/api/e", content=_beacon(), headers={"user-agent": UA}, cookies={"adagent_session": token})
+        await client.post("/analyze", data={"filter_url": "https://x.example/", "prompt_preset": "vehicles"},
+                          headers={"user-agent": UA}, cookies={"adagent_session": token}, follow_redirects=False)
+        await client.post("/analyze", data={"filter_url": "https://www.olx.pl/motoryzacja/", "prompt_preset": "vehicles"},
+                          headers={"user-agent": UA}, cookies={"adagent_session": token}, follow_redirects=False)
+        assert await _events(db) == []
+        # a different signed-in user is still tracked
+        await client.post("/api/e", content=_beacon(), headers={"user-agent": UA}, cookies={"adagent_session": other})
+    assert len(await _events(db)) == 1
+
+
+@pytest.mark.asyncio
+async def test_notrack_sid_from_opted_out_browser_is_dropped_server_side(client, db, funnel_db):
+    await client.post("/analyze", data={"filter_url": "https://x.example/", "prompt_preset": "vehicles", "sid": "notrack"},
+                      headers={"user-agent": UA}, follow_redirects=False)
+    assert await _events(db) == []
+
+
+@pytest.mark.asyncio
+async def test_purge_excluded_removes_sessions_linked_through_their_reports(client, db, funnel_db):
+    user, token = await _signed_in(db, "tester@example.com")
+    _, other_token = await _signed_in(db, "real@example.com")
+    # rows recorded BEFORE the exclusion was configured: a tester session + a real session
+    for tok, sid in ((token, "d" * 32), (other_token, "e" * 32)):
+        await crud.add_funnel_event(db, event="landing", sid=sid, device="mobile")
+        r = await client.post("/analyze", data={"filter_url": "https://www.olx.pl/motoryzacja/", "prompt_preset": "vehicles",
+                                                "sid": sid}, headers={"user-agent": UA},
+                              cookies={"adagent_session": tok}, follow_redirects=False)
+        assert r.status_code == 303
+    await crud.add_funnel_event(db, event="landing", sid="f" * 32, device="desktop")      # manual ?sid= purge
+    assert len(await _events(db)) == 5
+    h = {"x-internal-token": "t"}
+    with patch.object(settings, "INTERNAL_TOKEN", "t"), patch.object(settings, "FUNNEL_EXCLUDE_EMAILS", "tester@example.com"):
+        r = await client.post(f"/internal/funnel-report/purge-excluded?sid={'f' * 32}&sid=not-a-sid", headers=h)
+    assert r.status_code == 200 and r.json()["sessions"] == 2 and r.json()["reports"] == 1
+    left = {e.sid for e in await _events(db)}
+    assert left == {"e" * 32}
+
+
+def test_funnel_exclude_emails_property():
+    with patch.object(settings, "FUNNEL_EXCLUDE_EMAILS", " A@x.com ,b@x.com,, "):
+        assert settings.funnel_exclude_emails == frozenset({"a@x.com", "b@x.com"})
+    with patch.object(settings, "FUNNEL_EXCLUDE_EMAILS", ""):
+        assert settings.funnel_exclude_emails == frozenset()

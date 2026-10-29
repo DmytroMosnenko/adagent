@@ -114,6 +114,10 @@ class Settings(BaseSettings):
     FUNNEL_ENABLED: bool = True
     FUNNEL_RETENTION_DAYS: int = 90          # rows older than this are purged by the daily report job
     REPORT_TIMEZONE: str = "Europe/Warsaw"   # "a day" in the daily funnel report
+    # Comma-separated e-mails of your own / test accounts. While signed in with one of them
+    # the browser is also opted out of tracking (localStorage), and their reports' events
+    # are removed from the funnel by the daily job / POST /internal/funnel-report/purge-excluded.
+    FUNNEL_EXCLUDE_EMAILS: str = ""
     ADMIN_EMAIL: str = ""                    # receives the daily funnel report; empty = email disabled
     # Shared secret for /internal/* endpoints (sent as X-Internal-Token, loopback callers only).
     # Empty = those endpoints are disabled (404).
@@ -167,6 +171,10 @@ class Settings(BaseSettings):
             f"mysql+pymysql://{self.DB_USER}:{self.DB_PASSWORD}"
             f"@{self.DB_HOST}/{self.DB_NAME}?charset={self.DB_CHARSET}"
         )
+
+    @property
+    def funnel_exclude_emails(self) -> frozenset[str]:
+        return frozenset(e.strip().lower() for e in self.FUNNEL_EXCLUDE_EMAILS.split(",") if e.strip())
 
     @property
     def tracking_enabled(self) -> bool:

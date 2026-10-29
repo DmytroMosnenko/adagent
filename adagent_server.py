@@ -16,7 +16,7 @@ import stripe
 from contextlib import asynccontextmanager
 from fastapi import (
     BackgroundTasks, Cookie, Depends, FastAPI, Form,
-    HTTPException, Request, Response,
+    HTTPException, Query, Request, Response,
 )
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -153,6 +153,8 @@ async def _render_index(request: Request, db: AsyncSession, session_token: Optio
                         error: Optional[str], lang: Optional[str]):
     user, subscribed = await _resolve_user_and_sub(session_token, db)
     ui_lang = _ui_lang(request, lang)
+    # Own / test accounts: no tracker on the page, and the browser is flagged as opted out.
+    funnel_exclude = bool(user and user.email.lower() in settings.funnel_exclude_emails)
     # Polish UI -> Polish report by default; otherwise keep the old Accept-Language behaviour
     default_language = "pl" if ui_lang == "pl" else detect_language(request.headers.get("accept-language"))
     error_text = i18n.translate(FORM_ERRORS[error], ui_lang) if error in FORM_ERRORS else None
@@ -160,6 +162,7 @@ async def _render_index(request: Request, db: AsyncSession, session_token: Optio
         "user": user, "subscribed": subscribed, "error": error_text,
         "default_language": default_language,
         "demo_examples": DEMO_EXAMPLES,
+        "funnel_exclude": funnel_exclude,
     }, lang=lang)
 
 
@@ -280,7 +283,7 @@ async def analyze(
         background_tasks.add_task(
             funnel.record_server_event, None, "invalid_url", sid,
             request.headers.get("user-agent"), detail=funnel.invalid_url_reason(filter_url),
-            url=filter_url, ui_lang=_ui_lang(request))
+            url=filter_url, ui_lang=_ui_lang(request), session_token=adagent_session)
         return RedirectResponse(f"{_home(request)}?error=invalid_url", 303)
 
     # Validate preset
@@ -331,7 +334,7 @@ async def analyze(
     background_tasks.add_task(
         funnel.record_server_event, None, "analyze_started", sid,
         request.headers.get("user-agent"), detail=report.id, url=filter_url,
-        ui_lang=_ui_lang(request))
+        ui_lang=_ui_lang(request), session_token=adagent_session)
     background_tasks.add_task(run_analysis, report.id)
     return RedirectResponse(f"/report/{report.id}", status_code=303)
 
@@ -712,7 +715,8 @@ async def funnel_ingest(request: Request):
         if not fields:
             return Response(status_code=204)
         return Response(status_code=204, background=BackgroundTask(
-            funnel.record, None, device=funnel.device_class(ua), **fields))
+            funnel.record, None, device=funnel.device_class(ua),
+            session_token=request.cookies.get("adagent_session"), **fields))
     except Exception as exc:
         logger.warning("[funnel] ingest failed: %s", exc)
         return Response(status_code=204)
@@ -745,6 +749,27 @@ async def _funnel_report(db: AsyncSession, day: Optional[str], days: int):
     return funnel.aggregate(rows), label
 
 
+async def _purge_excluded(db: AsyncSession, extra_sids: list[str] = ()) -> dict:
+    """Remove events of excluded (test) accounts that were recorded before the visitor was
+    recognised: every session that started a report owned by an excluded e-mail, plus any
+    explicitly given sids. Anonymous browsing that never led to a report can't be linked."""
+    user_ids = await crud.get_user_ids_by_emails(db, settings.funnel_exclude_emails)
+    report_ids = await crud.get_report_ids_for_users(db, user_ids)
+    sids = set(await crud.get_funnel_sids_by_report_ids(db, report_ids))
+    sids.update(s for s in extra_sids if funnel.is_valid_sid(s))
+    deleted = await crud.delete_funnel_events(db, sorted(sids), report_ids) if (sids or report_ids) else 0
+    return {"sessions": len(sids), "reports": len(report_ids), "deleted": deleted}
+
+
+@app.post("/internal/funnel-report/purge-excluded", include_in_schema=False)
+async def funnel_purge_excluded(
+    request: Request, db: AsyncSession = Depends(get_db), sid: list[str] = Query(default=[]),
+):
+    """Delete already-recorded events of FUNNEL_EXCLUDE_EMAILS accounts (and optional ?sid=… ids)."""
+    _require_internal(request)
+    return await _purge_excluded(db, sid)
+
+
 @app.get("/internal/funnel-report", include_in_schema=False)
 async def funnel_report_view(
     request: Request, db: AsyncSession = Depends(get_db),
@@ -770,6 +795,7 @@ async def funnel_report_email(
     _require_internal(request)
     if not settings.ADMIN_EMAIL:
         raise HTTPException(503, "ADMIN_EMAIL is not set")
+    await _purge_excluded(db)     # test accounts' sessions never show up in the daily numbers
     report, label = await _funnel_report(db, date, days)
     sent = await email_client.send_funnel_report(
         settings.ADMIN_EMAIL, f"AdAgent funnel — {label}",

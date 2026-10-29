@@ -50,6 +50,7 @@ SERVER_ONLY_EVENTS = frozenset({"analyze_started", "analyze_done", "analyze_fail
 CLIENT_EVENTS = frozenset(STEPS) - SERVER_ONLY_EVENTS
 
 MAX_BODY = 2048            # bytes accepted by the ingest endpoint
+OPT_OUT_SID = "notrack"    # hidden-form sid funnel.js sends from an opted-out browser (test devices)
 ALLOWED_HOSTS = ("olx.pl", "otomoto.pl", "otodom.pl")
 
 _SID_RE     = re.compile(r"^[a-f0-9]{16,32}$")
@@ -161,6 +162,10 @@ def _clean(value: Any, pattern: re.Pattern, maxlen: int) -> Optional[str]:
     return value if value and pattern.match(value) else None
 
 
+def is_valid_sid(value: Any) -> bool:
+    return _clean(value, _SID_RE, 32) is not None
+
+
 def _clean_utm(value: Any, maxlen: int) -> Optional[str]:
     if not isinstance(value, str):
         return None
@@ -267,13 +272,31 @@ def _factory(factory):
     return async_session
 
 
-async def record(factory=None, *, device: str = "other", **fields) -> None:
+async def is_excluded(db, session_token: Optional[str]) -> bool:
+    """
+    True when the request belongs to a signed-in user whose e-mail is in
+    FUNNEL_EXCLUDE_EMAILS (your own / test accounts). Anonymous visitors can never match.
+    """
+    from .config import settings
+    from . import crud
+    excluded = settings.funnel_exclude_emails
+    if not excluded or not session_token:
+        return False
+    sess = await crud.get_session(db, session_token)
+    user = await crud.get_user_by_id(db, sess.user_id) if sess else None
+    return bool(user and user.email.lower() in excluded)
+
+
+async def record(factory=None, *, device: str = "other", session_token: Optional[str] = None,
+                 **fields) -> None:
     """Insert one already-validated event row. Swallows every exception."""
     try:
         if not _enabled():
             return
         from . import crud
         async with _factory(factory)() as db:
+            if await is_excluded(db, session_token):
+                return
             await crud.add_funnel_event(db, device=device, **fields)
     except Exception as exc:
         _warn_throttled("record failed", exc)
@@ -282,6 +305,7 @@ async def record(factory=None, *, device: str = "other", **fields) -> None:
 async def record_server_event(
     factory, event: str, sid: Optional[str], user_agent: Optional[str], *,
     detail: Optional[str] = None, url: Optional[str] = None, ui_lang: Optional[str] = None,
+    session_token: Optional[str] = None,
 ) -> None:
     """
     Server-side event (invalid_url, analyze_started). The sid comes from a hidden
@@ -290,7 +314,7 @@ async def record_server_event(
     landing row so the report can split ad vs organic.
     """
     try:
-        if not _enabled() or is_bot(user_agent):
+        if not _enabled() or is_bot(user_agent) or sid == OPT_OUT_SID:
             return
         from . import crud
         sid = _clean(sid, _SID_RE, 32)
@@ -299,6 +323,8 @@ async def record_server_event(
             host, label = url_label(url)
         extra: dict = {}
         async with _factory(factory)() as db:
+            if await is_excluded(db, session_token):
+                return
             if sid:
                 landing = await crud.get_funnel_landing(db, sid)
                 if landing is not None:

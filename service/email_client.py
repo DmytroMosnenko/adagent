@@ -20,6 +20,7 @@ import smtplib
 import ssl
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.utils import formataddr
 
 from .config import settings
 from .i18n import translate
@@ -28,13 +29,18 @@ from .logger import get_logger
 logger = get_logger(__name__)
 
 
+def _from_header() -> str:
+    """'AdAgent <noreply-adagent@dimosense.com>' – RFC 2047-encoded if the name is non-ASCII."""
+    return formataddr((settings.EMAIL_FROM_NAME, settings.EMAIL_FROM), charset="utf-8")
+
+
 # ── SMTP backend ───────────────────────────────────────────────────────────────
 
 def _smtp_send(to: str, subject: str, body_text: str, body_html: str) -> bool:
     """Blocking SMTP send; runs in a thread-pool via asyncio.to_thread."""
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
-    msg["From"] = settings.EMAIL_FROM
+    msg["From"] = _from_header()   # envelope sender below stays the bare address
     msg["To"] = to
     msg.attach(MIMEText(body_text, "plain", "utf-8"))
     msg.attach(MIMEText(body_html, "html", "utf-8"))
@@ -89,7 +95,7 @@ def _ses_send(to: str, subject: str, body_text: str, body_html: str) -> bool:
     from botocore.exceptions import BotoCoreError, ClientError
     try:
         _get_ses().send_email(
-            Source=settings.AWS_SES_FROM_EMAIL,
+            Source=formataddr((settings.EMAIL_FROM_NAME, settings.AWS_SES_FROM_EMAIL), charset="utf-8"),
             Destination={"ToAddresses": [to]},
             Message={
                 "Subject": {"Data": subject, "Charset": "UTF-8"},

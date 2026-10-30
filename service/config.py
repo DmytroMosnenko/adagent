@@ -39,6 +39,8 @@ class Settings(BaseSettings):
     # "smtp" → local/remote Postfix via SMTP  |  "ses" → AWS SES
     EMAIL_BACKEND: str = "smtp"
     EMAIL_FROM: str = "noreply-adagent@dimosense.com"
+    # Display name shown in the inbox instead of the raw address ("AdAgent" vs noreply-adagent@…)
+    EMAIL_FROM_NAME: str = "AdAgent"
 
     # ── SMTP (Postfix on the same Hetzner box, or any relay) ───────────────────
     # Postfix typically listens on localhost:25 (no auth, no TLS needed for

@@ -18,7 +18,7 @@ from fastapi import (
     BackgroundTasks, Cookie, Depends, FastAPI, Form,
     HTTPException, Query, Request, Response,
 )
-from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 from fastapi.templating import Jinja2Templates
@@ -265,6 +265,22 @@ def _home(request: Request) -> str:
     return "/pl" if _ui_lang(request) == "pl" else "/"
 
 
+def _analyze_reply(request: Request, location: str):
+    """
+    Outcome of /analyze. Plain form posts get the usual 303 redirect. The landing
+    page submits via fetch (Accept: application/json) so a rejected link can be shown
+    next to the field WITHOUT reloading the page (a reload jumps to the top first);
+    it gets the same target as JSON, plus the translated text for invalid_url.
+    """
+    if "application/json" not in request.headers.get("accept", ""):
+        return RedirectResponse(location, 303)
+    body: dict = {"redirect": location}
+    if "error=invalid_url" in location:
+        body["error"] = "invalid_url"
+        body["message"] = i18n.translate(FORM_ERRORS["invalid_url"], _ui_lang(request))
+    return JSONResponse(body)
+
+
 @app.post("/analyze")
 async def analyze(
     request: Request,
@@ -289,8 +305,9 @@ async def analyze(
             funnel.record_server_event, None, "invalid_url", sid,
             request.headers.get("user-agent"), detail=funnel.invalid_url_reason(filter_url),
             url=filter_url, ui_lang=_ui_lang(request), session_token=adagent_session)
-        # #filter_url: land on the form field, where the message is rendered.
-        return RedirectResponse(f"{_home(request)}?error=invalid_url#filter_url", 303)
+        # The landing page scrolls to the URL field itself (smoothly, see index.html);
+        # a #fragment would make the browser jump there instantly instead.
+        return _analyze_reply(request, f"{_home(request)}?error=invalid_url")
 
     # Validate preset
     if prompt_preset and prompt_preset not in PRESETS:
@@ -303,7 +320,7 @@ async def analyze(
     # Custom prompt requires both fields
     if not prompt_preset:
         if not custom_ad_prompt or not custom_summary_prompt:
-            return RedirectResponse(f"{_home(request)}?error=need_prompts", 303)
+            return _analyze_reply(request, f"{_home(request)}?error=need_prompts")
 
     # Resolve user & subscription
     user, subscribed = await _resolve_user_and_sub(adagent_session, db)
@@ -314,10 +331,10 @@ async def analyze(
         since = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=24)
         per_client = settings.FREE_REPORTS_PER_CLIENT_PER_DAY
         if per_client > 0 and await crud.count_free_reports_since(db, since, client_hash) >= per_client:
-            return RedirectResponse(f"{_home(request)}?error=daily_limit", 303)
+            return _analyze_reply(request, f"{_home(request)}?error=daily_limit")
         global_cap = settings.FREE_REPORTS_GLOBAL_PER_DAY
         if global_cap > 0 and await crud.count_free_reports_since(db, since) >= global_cap:
-            return RedirectResponse(f"{_home(request)}?error=busy", 303)
+            return _analyze_reply(request, f"{_home(request)}?error=busy")
 
     # Create report
     id_bytes  = generate_report_id()
@@ -342,7 +359,7 @@ async def analyze(
         request.headers.get("user-agent"), detail=report.id, url=filter_url,
         ui_lang=_ui_lang(request), session_token=adagent_session)
     background_tasks.add_task(run_analysis, report.id)
-    return RedirectResponse(f"/report/{report.id}", status_code=303)
+    return _analyze_reply(request, f"/report/{report.id}")
 
 
 # ── Report view ────────────────────────────────────────────────────────────────

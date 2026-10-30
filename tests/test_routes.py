@@ -98,8 +98,20 @@ async def test_analyze_rejects_url_confusion_attempts(client, db, bad_url):
     }, follow_redirects=False)
     assert r.status_code == 303
     assert "error=invalid_url" in r.headers["location"]
-    assert r.headers["location"].endswith("#filter_url")
     assert not r.headers["location"].startswith("/report/")
+
+
+async def test_analyze_json_mode_for_fetch_submit(client):
+    bad = await client.post("/analyze", data={"filter_url": "https://olx.pl.evil.com/",
+                            "prompt_preset": "vehicles"}, headers={"accept": "application/json"})
+    assert bad.status_code == 200
+    j = bad.json()
+    assert j["error"] == "invalid_url" and "olx.pl" in j["message"] and "error=invalid_url" in j["redirect"]
+
+    ok = await client.post("/analyze", data={"filter_url": "https://www.olx.pl/motoryzacja/",
+                           "prompt_preset": "vehicles"}, headers={"accept": "application/json"})
+    assert ok.status_code == 200
+    assert ok.json()["redirect"].startswith("/report/") and "error" not in ok.json()
 
 
 async def test_analyze_logs_rejected_url(client, caplog):

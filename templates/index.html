@@ -320,7 +320,50 @@
     box.textContent = input.validity.valueMissing ? input.dataset.msgEmpty : input.dataset.msgInvalid;
     box.hidden = false;
     input.classList.add("form-input-error");
+    // Cancelling the native bubble also drops the browser's own scroll-to-field,
+    // so do it here (same place the server-side rejection lands: the URL field).
+    goToField();
   });
+  function goToField() {
+    try {
+      var smooth = !(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches);
+      input.scrollIntoView({block: "start", behavior: smooth ? "smooth" : "auto"});   // offset: scroll-margin-top in style.css
+      input.focus({preventScroll: true});
+    } catch (err) {}
+  }
+  function showError(msg) {
+    box.textContent = msg;
+    box.hidden = false;
+    input.classList.add("form-input-error");
+    goToField();
+  }
+  // Fallback for a reload that already carries the message (JS fetch failed, or a no-JS
+  // post): scroll to it the same smooth way.
+  if (!box.hidden) window.addEventListener("load", function () { setTimeout(goToField, 100); });
+
+  // Submit via fetch: a link rejected by the server is reported through the very same
+  // path as the browser-side check (message + smooth scroll), with no page reload.
+  var formEl = input.form, busy = false;
+  if (formEl && window.fetch && window.FormData) {
+    formEl.addEventListener("submit", function (e) {
+      e.preventDefault();
+      if (busy) return;
+      busy = true;
+      var btn = formEl.querySelector('button[type="submit"]');
+      if (btn) btn.disabled = true;
+      function done() { busy = false; if (btn) btn.disabled = false; }
+      fetch(formEl.action, {
+        method: "POST", body: new FormData(formEl), credentials: "same-origin",
+        headers: {"Accept": "application/json"}
+      }).then(function (r) { return r.ok ? r.json() : Promise.reject(new Error("http " + r.status)); })
+        .then(function (d) {
+          if (d.error === "invalid_url") { done(); showError(d.message || input.dataset.msgInvalid); }
+          else if (d.redirect) { window.location.assign(d.redirect); }
+          else { throw new Error("bad reply"); }
+        })
+        .catch(function () { done(); HTMLFormElement.prototype.submit.call(formEl); });   // plain post as fallback
+    });
+  }
   input.addEventListener("input", clear);
 
   // ── Keep what the user typed across reloads (rejected link -> redirect, language switch) ──

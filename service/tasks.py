@@ -97,6 +97,11 @@ async def run_analysis(report_id: str) -> None:
                     "just doesn't currently have anything listed that fits them. "
                     "Try widening your filters (price range, category, etc.)."
                 )
+            elif link_diagnosis == "invalid_url":
+                message = (
+                    "This link is not a valid olx.pl, otomoto.pl or otodom.pl "
+                    "search link. Please copy the address from the site and try again."
+                )
             else:
                 message = (
                     "No ads found for this search. This is usually a temporary "

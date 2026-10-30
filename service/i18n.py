@@ -357,6 +357,9 @@ PL: dict[str, str] = {
     "Vehicles": "Pojazdy", "Realestate": "Nieruchomości", "Custom": "Własny",
     "done": "gotowy", "failed": "błąd", "pending": "oczekuje", "running": "w toku",
 
+    "Please paste your search link.": "Wklej link do wyszukiwania.",
+    "Please enter a valid link starting with https://": "Podaj poprawny link zaczynający się od https://",
+
     # ── messages produced by server / tasks ──
     "Invalid URL. Must be from olx.pl, otomoto.pl or otodom.pl": "Nieprawidłowy adres. Link musi pochodzić z olx.pl, otomoto.pl lub otodom.pl.",
     "Please provide both custom prompts or choose a preset.": "Podaj oba własne prompty albo wybierz gotowy rodzaj analizy.",

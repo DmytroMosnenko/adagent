@@ -2,6 +2,8 @@ from pydantic import BaseModel, EmailStr, field_validator
 from typing import Optional
 import re
 
+from . import url_guard
+
 
 class AnalyzeRequest(BaseModel):
     filter_url: str
@@ -13,11 +15,13 @@ class AnalyzeRequest(BaseModel):
     @classmethod
     def valid_olx_url(cls, v: str) -> str:
         v = v.strip()
-        allowed = ("olx.pl", "otomoto.pl", "otodom.pl")
-        if not any(h in v for h in allowed):
-            raise ValueError("URL must be from olx.pl, otomoto.pl, or otodom.pl")
-        if not v.startswith("http"):
+        reason = url_guard.rejection_reason(v)
+        if reason in ("empty", "no_scheme", "bad_scheme"):
             raise ValueError("URL must start with http:// or https://")
+        if reason:
+            raise ValueError(
+                "URL must be a plain https link on olx.pl, otomoto.pl, or otodom.pl "
+                f"({reason})")
         return v
 
     @field_validator("prompt_preset")

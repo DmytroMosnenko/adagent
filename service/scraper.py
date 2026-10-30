@@ -23,6 +23,7 @@ from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
 from .config import settings
 from .broker_client import BrokerGateClient
+from . import url_guard
 from .logger import get_logger
 
 logger = get_logger(__name__)
@@ -246,9 +247,9 @@ _UA = (
 # ── URL utilities ──────────────────────────────────────────────────────────────
 
 def _site(url: str) -> str:
-    if "otomoto.pl" in url: return "otomoto"
-    if "otodom.pl"  in url: return "otodom"
-    return "olx"
+    # Decided from the parsed hostname, not a substring of the whole URL
+    # (a query string or path containing "otodom.pl" must not change the site).
+    return url_guard.site_of(url) or "olx"
 
 
 def _origin(url: str) -> str:
@@ -488,12 +489,22 @@ _BLOCKED_RESOURCE_TYPES = frozenset({"image", "media", "font"})
 
 async def _block_unneeded_requests(route) -> None:
     """
-    Abort requests for resource types we never use (images/video/fonts).
+    Abort requests to private/loopback/link-local targets (url_guard), and
+    requests for resource types we never use (images/video/fonts).
     On classifieds sites, photos are typically the large majority of page
     weight — blocking them cuts proxy bandwidth substantially and removes
     the serial round-trip wait for each one, which matters most when every
     request is going through a slow residential exit node.
     """
+    url = route.request.url
+    # SSRF guard: runs for every request incl. each redirect hop. With an
+    # upstream proxy configured, DNS + connection happen on the proxy side, so
+    # only the static checks (IP literals / internal names) are meaningful.
+    if not await url_guard.request_is_safe(
+            url, resolve_dns=not settings.SCRAPER_PROXY_ADDRESS):
+        logger.warning("[scraper] blocked request to non-public target: %s", url[:200])
+        await route.abort()
+        return
     if route.request.resource_type in _BLOCKED_RESOURCE_TYPES:
         await route.abort()
     else:
@@ -1079,6 +1090,8 @@ async def collect_all_links(filter_url: str, report_id: str) -> tuple[list[str],
       - "blocked"         — 0 links after retries, and at least one attempt
                              looked like an anti-bot block/challenge page.
       - "unknown"         — 0 links after retries, cause unclear.
+      - "invalid_url"     — the URL (or where it redirected) is not an allowlisted
+                             olx.pl / otomoto.pl / otodom.pl page. Never retried.
 
     Wraps _collect_all_links_once() with retry logic: if the very first
     listing page comes back with 0 links, that's ambiguous — it can mean a
@@ -1106,6 +1119,9 @@ async def collect_all_links(filter_url: str, report_id: str) -> tuple[list[str],
         if diagnosis == "confirmed_empty":
             logger.info("[scraper] confirmed 0 results for %s — not retrying", filter_url)
             return [], "confirmed_empty"
+
+        if diagnosis == "invalid_url":      # deterministic — a retry cannot change it
+            return [], "invalid_url"
 
         last_diagnosis = diagnosis
         if attempt < _LISTING_MAX_RETRIES:
@@ -1136,6 +1152,13 @@ async def _collect_all_links_once(filter_url: str) -> tuple[list[str], str]:
       3. Fall back to incrementing ?page=N in the URL (Otomoto/Otodom).
       4. Stop when a page yields zero new links (safe for both strategies).
     """
+    # Defence in depth: the URL was validated at submit time, but rows can predate
+    # the current rules and this is the last stop before a browser is pointed at it.
+    reason = url_guard.rejection_reason(filter_url)
+    if reason:
+        logger.error("[scraper] refusing filter URL (%s): %s", reason, filter_url[:200])
+        return [], "invalid_url"
+
     filter_url = _reset_to_first_page(filter_url)
     logger.info("[scraper] starting link collection: %s", filter_url)
 
@@ -1162,6 +1185,13 @@ async def _collect_all_links_once(filter_url: str) -> tuple[list[str], str]:
             try:
                 resp=await page.goto(current, wait_until="networkidle",
                                        timeout=90_000)
+                # Re-check where we actually ended up: a redirect may have left
+                # the allowlist. Nothing is read from such a page.
+                if not url_guard.is_allowed_url(page.url):
+                    logger.error("[scraper] listing page redirected off-allowlist "
+                                 "(%s -> %s) — not scraping", current, page.url[:200])
+                    diagnosis = "invalid_url"
+                    break
                 status = resp.status if resp else 0
                 logger.debug("[scraper] listing page HTTP %d", status)
                 if not (200 <= status < 300):
@@ -1213,7 +1243,7 @@ async def _collect_all_links_once(filter_url: str) -> tuple[list[str], str]:
             skipped_promoted = 0
             for raw in raw_hrefs:
                 full = _clean(_absolute(raw, base))
-                if not full or not _is_ad(full):
+                if not full or not _is_ad(full) or not url_guard.is_allowed_url(full):
                     continue
                 if _is_promoted_url(full):
                     skipped_promoted += 1
@@ -1309,6 +1339,10 @@ async def _collect_all_links_once(filter_url: str) -> tuple[list[str], str]:
                 logger.info("[scraper] no next page found — done after %d pages", page_n)
                 break
 
+            if not url_guard.is_allowed_url(nxt):
+                logger.warning("[scraper] next-page URL not allowed, stopping: %s", nxt[:200])
+                break
+
             current = nxt
             await asyncio.sleep(_PAGE_BETWEEN_DELAY)
 
@@ -1363,6 +1397,11 @@ async def _extract_one(url: str, ctx, PWTimeout) -> dict:
     Extract a single ad page with retry.  Returns a data dict; on permanent
     failure returns {"url": url, "error": "<reason>"}.
     """
+    reason = url_guard.rejection_reason(url)
+    if reason:
+        logger.error("[scraper] refusing ad URL (%s): %s", reason, url[:200])
+        return {"url": url, "error": "URL not allowed"}
+
     site = _site(url)
 
     for attempt in range(_MAX_RETRIES + 1):
@@ -1370,6 +1409,10 @@ async def _extract_one(url: str, ctx, PWTimeout) -> dict:
         try:
             page = await ctx.new_page()
             resp = await page.goto(url, wait_until="networkidle", timeout=90_000)
+            if not url_guard.is_allowed_url(page.url):
+                logger.error("[scraper] ad page redirected off-allowlist (%s -> %s) — not scraping",
+                             url, page.url[:200])
+                return {"url": url, "error": "Redirected to a disallowed URL"}
             status = resp.status if resp else 0
             logger.debug("[scraper] ad page HTTP %d (attempt %d): %s", status, attempt + 1, url)
 

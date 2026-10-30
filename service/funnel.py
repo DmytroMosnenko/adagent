@@ -25,6 +25,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any, Iterable, Optional
 from urllib.parse import parse_qs, urlsplit
 
+from . import url_guard
 from .logger import get_logger
 
 logger = get_logger(__name__)
@@ -51,7 +52,7 @@ CLIENT_EVENTS = frozenset(STEPS) - SERVER_ONLY_EVENTS
 
 MAX_BODY = 2048            # bytes accepted by the ingest endpoint
 OPT_OUT_SID = "notrack"    # hidden-form sid funnel.js sends from an opted-out browser (test devices)
-ALLOWED_HOSTS = ("olx.pl", "otomoto.pl", "otodom.pl")
+ALLOWED_HOSTS = url_guard.ALLOWED_HOSTS
 
 _SID_RE     = re.compile(r"^[a-f0-9]{16,32}$")
 _DETAIL_RE  = re.compile(r"^[A-Za-z0-9_:.\-]{1,64}$")
@@ -144,13 +145,8 @@ def url_label(url: str) -> tuple[str, str]:
 
 
 def invalid_url_reason(url: str) -> str:
-    """Reason code for the server-side invalid_url path (mirrors /analyze's check)."""
-    url = (url or "").strip()
-    if not url:
-        return "empty"
-    if not url.startswith("http"):
-        return "no_scheme"
-    return "bad_host"
+    """Reason code for the server-side invalid_url path (same check as /analyze)."""
+    return url_guard.rejection_reason(url) or "ok"
 
 
 # ── Client payload validation ──────────────────────────────────────────────────

@@ -85,6 +85,49 @@ async def test_analyze_invalid_url_redirects_with_error(client):
     assert "error" in r.headers["location"].lower()
 
 
+@pytest.mark.parametrize("bad_url", [
+    "https://anything/?olx.pl",
+    "https://olx.pl.evil.com/",
+    "https://evil.com/olx.pl",
+    "https://user@olx.pl@evil.com/",
+    "http://127.0.0.1/",
+])
+async def test_analyze_rejects_url_confusion_attempts(client, db, bad_url):
+    r = await client.post("/analyze", data={
+        "filter_url": bad_url, "prompt_preset": "vehicles",
+    }, follow_redirects=False)
+    assert r.status_code == 303
+    assert "error=invalid_url" in r.headers["location"]
+    assert r.headers["location"].endswith("#filter_url")
+    assert not r.headers["location"].startswith("/report/")
+
+
+async def test_analyze_logs_rejected_url(client, caplog):
+    import logging
+    with caplog.at_level(logging.INFO):
+        await client.post("/analyze", data={
+            "filter_url": "https://olx.pl.evil.com/\nFAKE LOG LINE", "prompt_preset": "vehicles",
+        }, follow_redirects=False)
+    recs = [r for r in caplog.records if "invalid URL rejected" in r.getMessage()]
+    assert len(recs) == 1 and recs[0].levelno == logging.INFO
+    msg = recs[0].getMessage()
+    assert "bad_chars" in msg and "olx.pl.evil.com" in msg
+    assert "\n" not in msg                      # repr() keeps it on one line
+
+
+@pytest.mark.parametrize("good_url", [
+    "https://olx.pl/motoryzacja/",
+    "https://www.otomoto.pl/osobowe/mini",
+    "https://www.otodom.pl/pl/wyniki/sprzedaz/mieszkanie/cala-polska",
+])
+async def test_analyze_accepts_normal_marketplace_links(client, good_url):
+    r = await client.post("/analyze", data={
+        "filter_url": good_url, "prompt_preset": "vehicles",
+    }, follow_redirects=False)
+    assert r.status_code == 303
+    assert r.headers["location"].startswith("/report/")
+
+
 async def test_analyze_missing_custom_prompts_redirects_with_error(client):
     r = await client.post("/analyze", data={
         "filter_url": "https://www.olx.pl/motoryzacja/",
@@ -284,3 +327,11 @@ async def test_history_shows_user_reports(client, db):
     r = await client.get("/history", cookies={"adagent_session": token})
     assert r.status_code == 200
     assert "olx.pl/auta/" in r.text
+
+
+async def test_invalid_url_message_rendered_next_to_the_field(client):
+    r = await client.get("/?error=invalid_url")
+    html = r.text
+    assert 'id="filter_url_error" role="alert">' in html          # visible, not hidden
+    assert "Invalid URL" in html.split('id="filter_url_error"')[1].split("</p>")[0]
+    assert '<div class="alert alert-error">' not in html          # no separate top banner

@@ -97,8 +97,12 @@
       <!-- OLX URL -->
       <div class="form-group">
         <label class="form-label" for="filter_url">{{ t("Your search link (OLX, Otomoto or Otodom)") }}</label>
-        <input class="form-input" type="url" id="filter_url" name="filter_url" required
-               placeholder="https://www.olx.pl/motoryzacja/samochody/q-mini/">
+        <input class="form-input{% if url_error %} form-input-error{% endif %}" type="url" id="filter_url" name="filter_url" required
+               placeholder="https://www.olx.pl/motoryzacja/samochody/q-mini/"
+               aria-describedby="filter_url_error"
+               data-msg-empty="{{ t('Please paste your search link.') }}"
+               data-msg-invalid="{{ t('Please enter a valid link starting with https://') }}">
+        <p class="form-error" id="filter_url_error" role="alert"{% if not url_error %} hidden{% endif %}>{{ url_error or "" }}</p>
         <p class="form-hint">{{ t("Open OLX, Otomoto or Otodom, set your filters (brand, price, year…), then copy the address from the browser bar and paste it here.") }}</p>
         <p class="form-hint form-hint-app">📱 {{ t("In the OLX app: Share → Copy link") }}</p>
       </div>
@@ -303,6 +307,67 @@
       toggle();
     });
   });
+</script>
+<script>
+// Inline validation message instead of the browser's native bubble, which is
+// positioned once and does not follow the field when the page scrolls.
+(function () {
+  var input = document.getElementById("filter_url"), box = document.getElementById("filter_url_error");
+  if (!input || !box) return;
+  function clear() { box.hidden = true; box.textContent = ""; input.classList.remove("form-input-error"); }
+  input.addEventListener("invalid", function (e) {
+    e.preventDefault();                       // suppress the native popup; submit stays blocked
+    box.textContent = input.validity.valueMissing ? input.dataset.msgEmpty : input.dataset.msgInvalid;
+    box.hidden = false;
+    input.classList.add("form-input-error");
+  });
+  input.addEventListener("input", clear);
+
+  // ── Keep what the user typed across reloads (rejected link -> redirect, language switch) ──
+  // Per-tab sessionStorage with a short TTL; every access is guarded (private mode etc.).
+  var KEY = "aa_form_draft", TTL_MS = 60 * 60 * 1000, form = input.form;
+  if (!form) return;
+  var FIELDS = ["filter_url", "prompt_preset", "custom_ad_prompt", "custom_summary_prompt", "report_language"];
+  function load() {
+    try {
+      var d = JSON.parse(sessionStorage.getItem(KEY) || "null");
+      return d && d.t && Date.now() - d.t < TTL_MS && d.v ? d.v : {};
+    } catch (e) { return {}; }
+  }
+  function save(name, value) {
+    try {
+      var v = load(); v[name] = value;
+      sessionStorage.setItem(KEY, JSON.stringify({t: Date.now(), v: v}));
+    } catch (e) {}
+  }
+  var draft = load();
+  FIELDS.forEach(function (name) {
+    if (!(name in draft)) return;
+    var els = form.elements[name];
+    if (!els) return;
+    if (name === "prompt_preset") {
+      Array.prototype.forEach.call(els, function (r) {
+        if (r.value === draft[name]) { r.checked = true; r.dispatchEvent(new Event("change", {bubbles: true})); }
+      });
+    } else if (!els.value || name !== "filter_url") {
+      els.value = draft[name];
+    }
+  });
+  form.addEventListener("input", function (e) { if (e.target && e.target.name) save(e.target.name, e.target.value); });
+  form.addEventListener("change", function (e) { if (e.target && e.target.name) save(e.target.name, e.target.value); });
+  // The preset cards check their radio from a click handler, so the browser sees no
+  // state change and fires no "change" event: record the choice on click, and once more
+  // right before leaving the page (submit / language switch / reload).
+  function savePreset() {
+    var r = form.querySelector('input[name="prompt_preset"]:checked');
+    if (r) save("prompt_preset", r.value);
+  }
+  form.addEventListener("click", function (e) {
+    if (e.target && e.target.name === "prompt_preset") savePreset();
+  });
+  form.addEventListener("submit", savePreset);
+  window.addEventListener("pagehide", savePreset);
+})();
 </script>
 <script src="/static/demo.js?v={{ settings.APP_VERSION }}" defer></script>
 {% if funnel_exclude %}

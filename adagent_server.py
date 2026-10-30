@@ -30,7 +30,7 @@ from service.logger import get_logger, setup_root_logging
 
 # Apply unified log formatting before any third-party loggers are configured
 setup_root_logging()
-from service import crud, auth, email_client, stripe_client, scraper, i18n, funnel
+from service import crud, auth, email_client, stripe_client, scraper, i18n, funnel, url_guard
 from service.demo_data import DEMO_EXAMPLES
 from service.tasks import run_analysis
 
@@ -159,7 +159,10 @@ async def _render_index(request: Request, db: AsyncSession, session_token: Optio
     default_language = "pl" if ui_lang == "pl" else detect_language(request.headers.get("accept-language"))
     error_text = i18n.translate(FORM_ERRORS[error], ui_lang) if error in FORM_ERRORS else None
     return _tpl("index.html", request, {
-        "user": user, "subscribed": subscribed, "error": error_text,
+        "user": user, "subscribed": subscribed,
+        # invalid_url is shown next to the URL field; other errors keep the top banner
+        "error": None if error == "invalid_url" else error_text,
+        "url_error": error_text if error == "invalid_url" else None,
         "default_language": default_language,
         "demo_examples": DEMO_EXAMPLES,
         "funnel_exclude": funnel_exclude,
@@ -275,16 +278,19 @@ async def analyze(
     report_language: Optional[str] = Form(default=None),
     sid: Optional[str] = Form(default=None),     # per-tab funnel id, filled by static/funnel.js
 ):
-    # Validate URL
-    allowed_hosts = ("olx.pl", "otomoto.pl", "otodom.pl")
+    # Validate URL (parsed, allowlisted host — see service/url_guard.py)
     filter_url = filter_url.strip()
-    if not any(h in filter_url for h in allowed_hosts) or not filter_url.startswith("http"):
+    reason = url_guard.rejection_reason(filter_url)
+    if reason is not None:
+        # repr() + truncation: the URL is attacker-controlled (no newline/log injection).
+        logger.info("[analyze] invalid URL rejected (%s): %s", reason, repr(filter_url[:300]))
         # Funnel: this redirect used to be silent. Written after the response is sent.
         background_tasks.add_task(
             funnel.record_server_event, None, "invalid_url", sid,
             request.headers.get("user-agent"), detail=funnel.invalid_url_reason(filter_url),
             url=filter_url, ui_lang=_ui_lang(request), session_token=adagent_session)
-        return RedirectResponse(f"{_home(request)}?error=invalid_url", 303)
+        # #filter_url: land on the form field, where the message is rendered.
+        return RedirectResponse(f"{_home(request)}?error=invalid_url#filter_url", 303)
 
     # Validate preset
     if prompt_preset and prompt_preset not in PRESETS:

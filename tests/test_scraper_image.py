@@ -178,6 +178,7 @@ def _fake_ctx(og_html: str, field_visible: bool):
     def new_page():
         page = FakePage(og_html)
         resp = MagicMock(status=200)
+        page.url = "https://www.olx.pl/d/oferta/x.html"     # final URL after redirects
         page.goto = AsyncMock(return_value=resp)
         page.close = AsyncMock()
         page.content = AsyncMock(return_value="<html></html>")

@@ -1,3 +1,11 @@
+# EL10's redhat-rpm-config derives SOURCE_DATE_EPOCH from the newest %changelog
+# entry and clamps every packaged file's mtime to it. Our changelog date never
+# changes, so every release shipped identical mtimes -> Python reused stale
+# __pycache__/*.pyc (validated by source mtime+size only) and APP_VERSION never
+# changed. Keep real mtimes.
+%global source_date_epoch_from_changelog 0
+%global clamp_mtime_to_source_date_epoch 0
+
 Name:       adagent
 Version:    %{version}
 Release:    1%{?dist}
@@ -113,6 +121,13 @@ if ! compgen -G "$PLAYWRIGHT_BROWSERS_PATH/chromium-*" > /dev/null; then
 else
     echo "Playwright browsers already installed, skipping."
 fi
+
+# Drop bytecode compiled by the previous version. pyc files are generated at
+# runtime, are not owned by the RPM and survive upgrades; Python trusts them
+# if source mtime+size match, which is not a safe assumption (e.g. a version
+# bump 0.1.0 -> 0.1.1 keeps config.py the same size).
+find /opt/adagent \( -path /opt/adagent/venv -o -path /opt/adagent/.playwright \) -prune \
+     -o -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 
 # Fix permissions
 chown -R adagent:adagent /opt/adagent /var/log/adagent

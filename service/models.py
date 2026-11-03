@@ -107,6 +107,32 @@ class Subscription(Base):
                                      onupdate=datetime.utcnow)
 
 
+class AccessPass(Base):
+    """
+    One-time, time-boxed full access (e.g. 48 h) bought through a Stripe Checkout
+    payment — no subscription, no renewal. One row per payment; access is granted while
+    any row has status 'active' and expires_at in the future.
+    stripe_session_id is UNIQUE: the webhook and the /subscribe/success redirect can both
+    fulfil the same payment, and Stripe retries webhooks — only the first insert wins.
+    """
+    __tablename__ = "access_passes"
+
+    id                    = Column(Integer, primary_key=True, autoincrement=True)
+    user_id               = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"),
+                                   nullable=False, index=True)
+    stripe_session_id     = Column(String(255), nullable=False, unique=True)
+    stripe_payment_intent = Column(String(255), nullable=True, index=True)   # to revoke on refund
+    amount                = Column(Integer, nullable=True)                   # minor units (grosze / cents)
+    currency              = Column(String(8), nullable=True)
+    hours                 = Column(Integer, nullable=False)
+    status                = Column(String(20), nullable=False, default="active",
+                                   server_default=text("'active'"))          # active | refunded
+    expires_at            = Column(DateTime, nullable=False)
+    created_at            = Column(DateTime, server_default=text("CURRENT_TIMESTAMP"))
+
+    __table_args__ = (Index("idx_pass_user_expires", "user_id", "expires_at"),)
+
+
 class Report(Base):
     __tablename__ = "reports"
 

@@ -51,6 +51,6 @@ class CheckoutRequest(BaseModel):
     @field_validator("plan")
     @classmethod
     def valid_plan(cls, v: str) -> str:
-        if v not in ("monthly", "weekly", "daily"):
-            raise ValueError("plan must be monthly, weekly, or daily")
+        if v not in ("monthly", "weekly", "daily", "pass"):
+            raise ValueError("plan must be monthly, weekly, daily, or pass")
         return v

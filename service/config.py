@@ -29,8 +29,12 @@ class Settings(BaseSettings):
     # ── Stripe ─────────────────────────────────────────────────────────────────
     STRIPE_SECRET_KEY: str = ""
     STRIPE_WEBHOOK_SECRET: str = ""
-    # JSON map: period → Stripe price_id
-    # e.g. '{"monthly":"price_xxx","weekly":"price_yyy","daily":"price_zzz"}'
+    # JSON map: plan → Stripe price_id
+    # e.g. '{"monthly":"price_xxx","pass":"price_yyy"}'
+    #   "monthly"  recurring subscription (AdAgent Pro)
+    #   "pass"     ONE-TIME payment price → time-boxed full access (see PASS_HOURS).
+    #              Leave it out and the pass is simply not offered anywhere in the UI.
+    #   (any other key, e.g. "weekly"/"daily", is treated as a recurring subscription price)
     STRIPE_PRICES_JSON: str = '{"monthly": ""}'
     STRIPE_SUCCESS_URL: str = "https://adagent.dimosense.com/subscribe/success"
     STRIPE_CANCEL_URL: str = "https://adagent.dimosense.com/subscribe"
@@ -90,6 +94,15 @@ class Settings(BaseSettings):
     STRIPE_CHECKOUT_CURRENCY_USD: str = "USD"    # e.g. "usd" (forces USD for non Polish-UI checkouts)
     PRICE_LABEL_MONTHLY_PL: str = "39,99 zł"     # e.g. "39,99 zł"
     STRIPE_CHECKOUT_CURRENCY_PL: str = "PLN"     # e.g. "pln" (forces PLN for Polish-UI checkouts)
+    # ── One-time pass (no subscription) ────────────────────────────────────────
+    # How long a pass gives full access, counted from payment. Copied into the Checkout
+    # session metadata when it is created, so changing this later never shortens or
+    # lengthens a pass somebody already paid for.
+    PASS_HOURS: int = 48
+    # DISPLAY ONLY — the charge comes from the Stripe "pass" price (same rule as the
+    # monthly labels above: the PLN label only after the price has a PLN currency_option).
+    PRICE_LABEL_PASS: str = "$2.99"
+    PRICE_LABEL_PASS_PL: str = "9,99 zł"
     # Show an explicit "I accept the Terms / start immediately, losing withdrawal right"
     # checkbox in Checkout. Requires the Terms URL to be set in the Stripe Dashboard
     # (Settings → Public details) — Stripe rejects the session otherwise.
@@ -194,9 +207,19 @@ class Settings(BaseSettings):
             return self.PRICE_LABEL_MONTHLY_PL
         return self.PRICE_LABEL_MONTHLY
 
+    def pass_price_label(self, lang: str | None = None) -> str:
+        if lang == "pl" and self.PRICE_LABEL_PASS_PL:
+            return self.PRICE_LABEL_PASS_PL
+        return self.PRICE_LABEL_PASS
+
+    @property
+    def pass_enabled(self) -> bool:
+        """The pass is offered only once a Stripe price for it is configured."""
+        return bool(self.stripe_prices.get("pass"))
+
     @property
     def stripe_prices(self) -> dict[str, str]:
-        """Returns {period: price_id} dict parsed from STRIPE_PRICES_JSON."""
+        """Returns {plan: price_id} dict parsed from STRIPE_PRICES_JSON."""
         return json.loads(self.STRIPE_PRICES_JSON)
 
 

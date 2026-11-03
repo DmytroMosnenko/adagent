@@ -47,8 +47,10 @@ a{color:var(--blue)}
                  padding:14px 18px;display:flex;align-items:center;gap:14px;
                  margin:16px 24px;flex-wrap:wrap}
 .freemium-banner p{flex:1;font-size:0.88rem;color:#92400e;margin:0}
-.freemium-banner a{background:var(--amber);color:#fff;padding:7px 16px;border-radius:6px;
-                   font-weight:700;text-decoration:none;font-size:0.82rem;white-space:nowrap}
+.freemium-banner a,.freemium-banner button{background:var(--amber);color:#fff;padding:7px 16px;border-radius:6px;
+                   font-weight:700;text-decoration:none;font-size:0.82rem;white-space:nowrap;border:0;cursor:pointer;font-family:inherit}
+.freemium-banner form{margin:0}
+.freemium-banner a.alt{background:none;color:#92400e!important;text-decoration:underline;padding:7px 4px;font-weight:600}
 
 .container{max-width:960px;margin:0 auto;padding:20px 16px 100px}
 .section-heading{font-size:0.7rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
@@ -276,8 +278,17 @@ details.raw.deep-dive>summary:hover{background:#e1ecf9;color:var(--navy)}
 <!-- Freemium banner -->
 {% if is_limited and ads_found > ads|length %}
 <div class="freemium-banner">
+  {% if pass_enabled %}
+  <p>🔒 {{ t("More ads were found but not analyzed: {more} (free plan: {shown} ads shown). Get a {h} h pass or AdAgent Pro to unlock all {total} results.", more=ads_found - ads|length, shown=ads|length, total=ads_found, h=pass_hours) }}</p>
+  <form action="{{ adagent_url }}/subscribe/checkout" method="post">
+    <input type="hidden" name="plan" value="pass">
+    <button type="submit">{{ t("Unlock all — {price} for {h} h →", price=pass_label, h=pass_hours) }}</button>
+  </form>
+  <a href="{{ adagent_url }}{{ subscribe_url }}" class="alt">{{ t("or see Pro") }}</a>
+  {% else %}
   <p>🔒 {{ t("More ads were found but not analyzed: {more} (free plan: {shown} ads shown). Upgrade to AdAgent Pro to unlock all {total} results.", more=ads_found - ads|length, shown=ads|length, total=ads_found) }}</p>
   <a href="{{ adagent_url }}{{ subscribe_url }}">{{ t("Upgrade — {price}/month →", price=price_label) }}</a>
+  {% endif %}
 </div>
 {% endif %}
 

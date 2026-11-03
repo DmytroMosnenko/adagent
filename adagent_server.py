@@ -30,7 +30,7 @@ from service.logger import get_logger, setup_root_logging
 
 # Apply unified log formatting before any third-party loggers are configured
 setup_root_logging()
-from service import crud, auth, email_client, stripe_client, scraper, i18n, funnel, url_guard
+from service import crud, auth, email_client, stripe_client, scraper, i18n, funnel, url_guard, passes
 from service.demo_data import DEMO_EXAMPLES
 from service.tasks import run_analysis
 
@@ -105,11 +105,17 @@ def _switch_url(request: Request, ui_lang: str) -> str:
 
 def _tpl(name: str, request: Request, extra: dict | None = None, lang: Optional[str] = None):
     ui_lang = _ui_lang(request, lang)
+    pass_until = (extra or {}).get("pass_until")
     ctx = {"request": request, "presets": PRESETS, "settings": settings,
            "languages": language_options(),
            "current_year": datetime.now(timezone.utc).year,
            "ui_lang": ui_lang, "t": i18n.translator(ui_lang),
            "price_label": settings.price_label(ui_lang),
+           # One-time pass (offered only once a Stripe "pass" price is configured)
+           "pass_enabled": settings.pass_enabled,
+           "pass_hours": settings.PASS_HOURS,
+           "pass_label": settings.pass_price_label(ui_lang),
+           "pass_until_label": passes.format_expiry(pass_until, settings.REPORT_TIMEZONE),
            "switch_url": _switch_url(request, ui_lang)}
     ctx.update(extra or {})
     resp = templates.TemplateResponse(request=request, name=name, context=ctx)
@@ -132,26 +138,44 @@ def _client_hash(request: Request) -> str:
     return hmac.new(settings.SECRET_KEY.encode(), ip.encode(), hashlib.sha256).hexdigest()
 
 
-async def _resolve_user_and_sub(
+async def _resolve_access(
     session_token: Optional[str],
     db: AsyncSession,
-) -> tuple[Optional[object], bool]:
+) -> tuple[Optional[object], bool, Optional[datetime]]:
+    """
+    (user, has_full_access, pass_until).
+    Full access = an active Pro subscription OR an active one-time pass.
+    pass_until is set only when a pass is the SOLE source of that access (no active
+    subscription) — it is what the UI shows as "pass active until …".
+    """
     user = None
     subscribed = False
+    pass_until = None
     if session_token:
         s = await crud.get_session(db, session_token)
         if s:
             user = await crud.get_user_by_id(db, s.user_id)
             if user:
                 subscribed = await crud.is_subscribed(db, user.id)
-    return user, subscribed
+                if not subscribed:
+                    pass_until = await crud.get_pass_until(db, user.id)
+    return user, subscribed or pass_until is not None, pass_until
+
+
+async def _resolve_user_and_sub(
+    session_token: Optional[str],
+    db: AsyncSession,
+) -> tuple[Optional[object], bool]:
+    """(user, has_full_access) — "subscribed" throughout the templates means Pro OR pass."""
+    user, access, _ = await _resolve_access(session_token, db)
+    return user, access
 
 
 # ── Landing page ───────────────────────────────────────────────────────────────
 
 async def _render_index(request: Request, db: AsyncSession, session_token: Optional[str],
                         error: Optional[str], lang: Optional[str]):
-    user, subscribed = await _resolve_user_and_sub(session_token, db)
+    user, subscribed, pass_until = await _resolve_access(session_token, db)
     ui_lang = _ui_lang(request, lang)
     # Own / test accounts: no tracker on the page, and the browser is flagged as opted out.
     funnel_exclude = bool(user and user.email.lower() in settings.funnel_exclude_emails)
@@ -159,7 +183,7 @@ async def _render_index(request: Request, db: AsyncSession, session_token: Optio
     default_language = "pl" if ui_lang == "pl" else detect_language(request.headers.get("accept-language"))
     error_text = i18n.translate(FORM_ERRORS[error], ui_lang) if error in FORM_ERRORS else None
     return _tpl("index.html", request, {
-        "user": user, "subscribed": subscribed,
+        "user": user, "subscribed": subscribed, "pass_until": pass_until,
         # invalid_url is shown next to the URL field; other errors keep the top banner
         "error": None if error == "invalid_url" else error_text,
         "url_error": error_text if error == "invalid_url" else None,
@@ -528,12 +552,12 @@ async def history(
     db: AsyncSession = Depends(get_db),
     adagent_session: Optional[str] = Cookie(default=None),
 ):
-    user, subscribed = await _resolve_user_and_sub(adagent_session, db)
+    user, subscribed, pass_until = await _resolve_access(adagent_session, db)
     if not user:
         return RedirectResponse("/auth", status_code=303)
     reports = await crud.get_user_reports(db, user.id)
     return _tpl("history.html", request, {
-        "user": user, "subscribed": subscribed, "reports": reports,
+        "user": user, "subscribed": subscribed, "pass_until": pass_until, "reports": reports,
     })
 
 
@@ -545,14 +569,15 @@ async def subscribe_page(
     db: AsyncSession = Depends(get_db),
     adagent_session: Optional[str] = Cookie(default=None),
 ):
-    user, subscribed = await _resolve_user_and_sub(adagent_session, db)
+    user, subscribed, pass_until = await _resolve_access(adagent_session, db)
     prices = settings.stripe_prices
+    # "monthly" (Pro) and "pass" have their own cards; anything else is listed as "Other plans".
     plans = [
         {"period": p, "price_id": pid, "label": p.capitalize()}
-        for p, pid in prices.items() if pid
+        for p, pid in prices.items() if pid and p not in ("monthly", passes.PASS_PLAN)
     ]
     return _tpl("subscribe.html", request, {
-        "user": user, "subscribed": subscribed, "plans": plans,
+        "user": user, "subscribed": subscribed, "pass_until": pass_until, "plans": plans,
     })
 
 
@@ -569,6 +594,10 @@ async def subscribe_checkout(
         url = await stripe_client.create_checkout_session(plan, customer_email, lang=_ui_lang(request))
     except ValueError as exc:
         raise HTTPException(400, str(exc))
+    except stripe.StripeError as exc:
+        # e.g. product misconfigured in the Dashboard (missing tax code, no PLN/USD price option).
+        logger.error("[checkout] Stripe rejected the session for plan=%s: %s", plan, exc)
+        raise HTTPException(502, "Payment provider error. Please try again in a moment.")
     return RedirectResponse(url, status_code=303)
 
 
@@ -579,13 +608,25 @@ async def subscribe_success(
     adagent_session: Optional[str] = Cookie(default=None),
     session_id: Optional[str] = None,
 ):
-    user, subscribed = await _resolve_user_and_sub(adagent_session, db)
+    # What Stripe says about this payment (None for a missing/forged id or a failed lookup)
+    checkout = await stripe_client.get_checkout_session(session_id)
+    is_pass = bool(checkout and stripe_client.is_pass_session(checkout))
+    # Delayed payment methods: the redirect can arrive before the bank has confirmed the money.
+    pass_pending = is_pass and checkout.get("payment_status") != "paid"
+    if is_pass:
+        # Fulfil right away instead of waiting for the webhook, so a signed-in buyer has
+        # access the moment they land here. Idempotent — the webhook may do the same later,
+        # and is the backstop if this fails: never turn a paid checkout into an error page.
+        try:
+            await _fulfill_pass(db, checkout)
+        except Exception:
+            logger.exception("[pass] fulfilment from the success page failed; webhook will retry")
+    user, subscribed, pass_until = await _resolve_access(adagent_session, db)
     # Verified purchase data for the conversion tag (None -> tag skipped)
-    purchase = None
-    if settings.tracking_enabled:
-        purchase = await stripe_client.get_checkout_summary(session_id)
+    purchase = stripe_client.summary_from_session(checkout) if settings.tracking_enabled else None
     return _tpl("subscribe_success.html", request, {
-        "user": user, "subscribed": subscribed, "purchase": purchase,
+        "user": user, "subscribed": subscribed, "pass_until": pass_until,
+        "purchase": purchase, "is_pass": is_pass, "pass_pending": pass_pending,
     })
 
 
@@ -605,9 +646,21 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     etype = event["type"]
     logger.info("[webhook] %s", etype)
 
-    if etype == "checkout.session.completed":
+    if etype in ("checkout.session.completed", "checkout.session.async_payment_succeeded"):
         session = stripe_client.get_session_dict(event)
-        await _handle_checkout_completed(db, session)
+        if stripe_client.is_pass_session(session):
+            # One-time payment. Delayed methods (e.g. bank transfer) complete first as
+            # "unpaid" and are fulfilled by the async_payment_succeeded event instead.
+            await _fulfill_pass(db, session)
+        elif etype == "checkout.session.completed":
+            await _handle_checkout_completed(db, session)
+
+    elif etype == "charge.refunded":
+        # Refunded one-time payment → end the pass now. (Subscriptions are untouched.)
+        charge = stripe_client.get_object_dict(event)
+        payment_intent = charge.get("payment_intent")
+        if payment_intent and await crud.revoke_pass_by_payment_intent(db, payment_intent):
+            logger.info("[webhook] pass revoked after refund (payment_intent=%s)", payment_intent)
 
     elif etype in ("customer.subscription.updated", "customer.subscription.deleted"):
         sub = event["data"]["object"].to_dict()
@@ -638,6 +691,47 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
             )
 
     return {"ok": True}
+
+
+async def _fulfill_pass(db: AsyncSession, session: dict) -> None:
+    """
+    Grant the pass for a paid one-time Checkout Session, once. Called by the webhook AND by
+    /subscribe/success; crud.create_pass is idempotent on the session id, and only the call
+    that actually creates the row sends the confirmation e-mail.
+    """
+    if session.get("payment_status") != "paid":
+        logger.info("[pass] session %s not paid yet (%s) — waiting for async_payment_succeeded",
+                    session.get("id"), session.get("payment_status"))
+        return
+    customer_email = (session.get("customer_details") or {}).get("email") or session.get("customer_email")
+    if not customer_email or not session.get("id"):
+        logger.warning("[pass] paid session without e-mail or id — cannot grant access: %s", session.get("id"))
+        return
+
+    user, _ = await crud.get_or_create_user(db, customer_email.lower())
+    customer_id = session.get("customer")
+    if customer_id and not user.stripe_customer_id:
+        await crud.set_stripe_customer(db, user.id, customer_id)
+
+    hours = stripe_client.pass_hours_from_session(session)
+    row, created = await crud.create_pass(
+        db, user_id=user.id, stripe_session_id=session["id"], hours=hours,
+        stripe_payment_intent=session.get("payment_intent"),
+        amount=session.get("amount_total"), currency=session.get("currency"),
+    )
+    if not created:
+        return
+
+    # Sign-in link, so the buyer can use the pass from any browser (same as the Pro welcome mail)
+    token = auth.generate_token()
+    await crud.create_magic_link(db, token, customer_email.lower(), WELCOME_LINK_TTL_MINUTES)
+    lang = i18n.normalize(session.get("locale")) or "en"
+    await email_client.send_pass_welcome(
+        customer_email, token, lang,
+        expires_label=passes.format_expiry(row.expires_at, settings.REPORT_TIMEZONE) or "",
+        hours=hours, ttl_minutes=WELCOME_LINK_TTL_MINUTES,
+    )
+    logger.info("[pass] granted %d h to %s until %s", hours, customer_email, row.expires_at)
 
 
 async def _handle_checkout_completed(db: AsyncSession, session: dict) -> None:

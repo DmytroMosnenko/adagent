@@ -57,7 +57,7 @@ class TestCheckoutRequest:
         assert r.plan == "monthly"
 
     def test_valid_plans(self):
-        for plan in ("monthly", "weekly", "daily"):
+        for plan in ("monthly", "weekly", "daily", "pass"):
             assert CheckoutRequest(plan=plan).plan == plan
 
     def test_rejects_unknown_plan(self):

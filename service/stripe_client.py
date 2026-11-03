@@ -6,6 +6,7 @@ import stripe
 from .config import settings
 from .i18n import translate
 from .logger import get_logger
+from .passes import PASS_PLAN, clamp_hours
 
 logger = get_logger(__name__)
 
@@ -19,19 +20,33 @@ async def create_checkout_session(
     metadata: Optional[dict] = None,
     lang: str = "en",
 ) -> str:
-    """Create a Stripe Checkout Session and return the redirect URL."""
+    """
+    Create a Stripe Checkout Session and return the redirect URL.
+
+    plan == "pass" is a ONE-TIME payment (mode="payment") that grants settings.PASS_HOURS of
+    full access; every other plan is a recurring subscription.
+    """
     prices = settings.stripe_prices
     price_id = prices.get(plan)
     if not price_id:
         raise ValueError(f"No Stripe price configured for plan '{plan}'")
 
+    is_pass = plan == PASS_PLAN
     params: dict = {
-        "mode": "subscription",
+        "mode": "payment" if is_pass else "subscription",
         "line_items": [{"price": price_id, "quantity": 1}],
         "success_url": settings.STRIPE_SUCCESS_URL + "?session_id={CHECKOUT_SESSION_ID}",
         "cancel_url": settings.STRIPE_CANCEL_URL,
-        "metadata": metadata or {},
+        "metadata": dict(metadata or {}),
     }
+    if is_pass:
+        # Read back by the webhook: tells a pass from a subscription and fixes the duration
+        # at purchase time (a later PASS_HOURS change must not alter what was paid for).
+        params["metadata"].update({"plan": PASS_PLAN, "pass_hours": str(settings.PASS_HOURS)})
+        params["payment_intent_data"] = {
+            "description": f"AdAgent {settings.PASS_HOURS} h pass",
+            "metadata": {"plan": PASS_PLAN},
+        }
     if customer_email:
         params["customer_email"] = customer_email
 
@@ -73,14 +88,8 @@ async def create_checkout_session(
     return session.url
 
 
-async def get_checkout_summary(session_id: Optional[str]) -> Optional[dict]:
-    """
-    Verified purchase data for the conversion tag on /subscribe/success.
-
-    Returns {"transaction_id", "value", "currency"} only when Stripe confirms the
-    session was actually paid — so opening /subscribe/success?session_id=anything
-    cannot fire a fake purchase conversion. Returns None otherwise (tag is skipped).
-    """
+async def get_checkout_session(session_id: Optional[str]) -> Optional[dict]:
+    """Checkout Session straight from Stripe as a dict, or None (bad id / lookup failed)."""
     if not session_id or not session_id.startswith("cs_") or len(session_id) > 255:
         return None
     try:
@@ -88,8 +97,18 @@ async def get_checkout_summary(session_id: Optional[str]) -> Optional[dict]:
     except stripe.StripeError as exc:
         logger.warning("[stripe] checkout session lookup failed (%s): %s", session_id, exc)
         return None
-    data = session.to_dict()
-    if data.get("payment_status") not in ("paid", "no_payment_required"):
+    return session.to_dict()
+
+
+def summary_from_session(data: Optional[dict]) -> Optional[dict]:
+    """
+    Verified purchase data for the conversion tag on /subscribe/success.
+
+    Returns {"transaction_id", "value", "currency"} only when Stripe confirms the
+    session was actually paid — so opening /subscribe/success?session_id=anything
+    cannot fire a fake purchase conversion. Returns None otherwise (tag is skipped).
+    """
+    if not data or data.get("payment_status") not in ("paid", "no_payment_required"):
         return None
     amount, currency = data.get("amount_total"), data.get("currency")
     if amount is None or not currency:
@@ -99,6 +118,21 @@ async def get_checkout_summary(session_id: Optional[str]) -> Optional[dict]:
         "value": round(amount / 100, 2),
         "currency": currency.upper(),
     }
+
+
+async def get_checkout_summary(session_id: Optional[str]) -> Optional[dict]:
+    """get_checkout_session + summary_from_session, for callers that only need the tag data."""
+    return summary_from_session(await get_checkout_session(session_id))
+
+
+def is_pass_session(session: dict) -> bool:
+    """True for a Checkout Session created for the one-time pass (see create_checkout_session)."""
+    return (session.get("metadata") or {}).get("plan") == PASS_PLAN and session.get("mode") == "payment"
+
+
+def pass_hours_from_session(session: dict) -> int:
+    """Duration fixed at purchase time (metadata.pass_hours), bounded; falls back to PASS_HOURS."""
+    return clamp_hours((session.get("metadata") or {}).get("pass_hours"), settings.PASS_HOURS)
 
 
 def parse_webhook(payload: bytes, sig_header: str) -> stripe.Event:
@@ -111,6 +145,11 @@ def parse_webhook(payload: bytes, sig_header: str) -> stripe.Event:
     return stripe.Webhook.construct_event(
         payload, sig_header, settings.STRIPE_WEBHOOK_SECRET
     )
+
+
+def get_object_dict(event: stripe.Event) -> dict:
+    """event.data.object (a Charge, Invoice, …) as a plain dict — same reason as get_session_dict."""
+    return event["data"]["object"].to_dict()
 
 
 def get_session_dict(event: stripe.Event) -> dict:

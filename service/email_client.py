@@ -10,6 +10,7 @@ Backend is selected at startup via ``settings.EMAIL_BACKEND``:
 Public API (``lang`` is optional, "en" or "pl"; defaults to English):
   await send_magic_link(email, token, lang) -> bool
   await send_subscription_welcome(email, token, lang, ttl_minutes) -> bool
+  await send_pass_welcome(email, token, lang, expires_label, hours, ttl_minutes) -> bool
   await send_report_ready(email, report_id, status, lang) -> bool
   await send_funnel_report(to, subject, body_text, body_html) -> bool   (admin only, English)
 """
@@ -219,6 +220,41 @@ async def send_subscription_welcome(
 <html lang="{lang}"><body style="font-family:sans-serif;max-width:520px;margin:40px auto;color:#1e293b">
   <h2 style="color:#1e3a5f">&#127881; {t("Welcome to AdAgent Pro!")}</h2>
   <p>{t("Your subscription is now active. You can now analyze all ads in any OLX search.")}</p>
+  <p style="margin:28px 0">
+    <a href="{url}"
+       style="background:#16a34a;color:#fff;padding:12px 24px;border-radius:6px;
+              text-decoration:none;font-weight:700">
+      {t("Access My Account")}
+    </a>
+  </p>
+  <p style="color:#94a3b8;font-size:13px">
+    {t("Click the button below to sign in. This link expires in {m}.", m=ttl)}
+  </p>
+</body></html>"""
+
+    return await asyncio.to_thread(_send, email, subject, body_text, body_html)
+
+
+async def send_pass_welcome(
+    email: str, token: str, lang: str = "en", expires_label: str = "",
+    hours: int = 48, ttl_minutes: int | None = None,
+) -> bool:
+    """Confirmation + sign-in link for a one-time pass. `expires_label` is pre-formatted (site timezone)."""
+    t = lambda text, **kw: translate(text, lang, **kw)  # noqa: E731
+    url = f"{settings.APP_BASE_URL}/auth/verify/{token}"
+    ttl = _ttl_text(ttl_minutes or settings.MAGIC_LINK_TTL_MINUTES, lang)
+    subject = t("Your {h} h AdAgent pass is active", h=hours)
+    active_until = t("Full access is active until {until}. It does not renew and you will not be charged again.",
+                     until=expires_label)
+    body_text = (
+        f"{t('Thank you for your purchase!')}\n\n{active_until}\n\n"
+        f"{t('Click the link below to sign in:')}\n\n{url}\n\n"
+        f"({t('Click the button below to sign in. This link expires in {m}.', m=ttl)})"
+    )
+    body_html = f"""
+<html lang="{lang}"><body style="font-family:sans-serif;max-width:520px;margin:40px auto;color:#1e293b">
+  <h2 style="color:#1e3a5f">&#9201; {t("Your {h} h AdAgent pass is active", h=hours)}</h2>
+  <p>{active_until}</p>
   <p style="margin:28px 0">
     <a href="{url}"
        style="background:#16a34a;color:#fff;padding:12px 24px;border-radius:6px;

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_plan_features.html" import plan_features with context %}
 {% block title %}{{ t("AdAgent — Analyze OLX ads with AI") }}{% endblock %}
 {% block meta_description %}{{ t("Paste an OLX, Otomoto or Otodom search link. AI reads every ad, scores it 1–10, flags red flags and known model weak points, and ranks the offers for you.") }}{% endblock %}
 
@@ -34,7 +35,7 @@
   </ol>
 </div>
 
-<div class="container" style="max-width:680px">
+<div class="container" style="max-width:680px;padding-bottom:0">
 
   {% if error %}
   <div class="alert alert-error">{{ error }}</div>
@@ -158,7 +159,15 @@
       {% if not subscribed %}
       <div class="alert alert-info" style="margin-bottom:18px">
         🎁 <strong>{{ t("Free tier:") }}</strong> {{ t("first {n} ads analyzed.", n=settings.FREE_ADS_LIMIT) }}
+        {% if pass_enabled %}
+        <a href="/subscribe" style="font-weight:700">{{ t("Unlock all ads for {h} h — {price}", h=pass_hours, price=pass_label) }}</a>
+        {% else %}
         <a href="/subscribe" style="font-weight:700">{{ t("Upgrade to Pro") }}</a> {{ t("to unlock all ads.") }}
+        {% endif %}
+      </div>
+      {% elif pass_until_label %}
+      <div class="alert alert-success" style="margin-bottom:18px">
+        ⏱ <strong>{{ t("Pass active") }}</strong> — {{ t("all ads will be analyzed until {until}.", until=pass_until_label) }}
       </div>
       {% else %}
       <div class="alert alert-success" style="margin-bottom:18px">
@@ -252,40 +261,54 @@
         <p>{{ t("No. AdAgent is an independent tool and is not affiliated with, or endorsed by, OLX Group, Otomoto or Otodom.") }}</p></details>
       <details><summary>{{ t("What is free and what is Pro?") }}</summary>
         <p>{{ t("The free tier analyzes the first {n} ads of every search. Pro analyzes all ads and keeps your report history.", n=settings.FREE_ADS_LIMIT) }}</p></details>
+      {% if pass_enabled %}
+      <details><summary>{{ t("Do I need a subscription?") }}</summary>
+        <p>{{ t("No. To check a single purchase, take a {h} h pass for {price}: one payment, full access to every ad in every search, no renewal. Pro is for people who search regularly.", h=pass_hours, price=pass_label) }}</p></details>
+      {% endif %}
       <details><summary>{{ t("Can I cancel the subscription?") }}</summary>
         <p>{{ t("Yes, at any time from the billing portal. You keep Pro access until the end of the period you already paid for.") }}</p></details>
     </div>
   </section>
 
-  <!-- Feature comparison -->
+</div>
+
+<!-- Feature comparison: wider than the form column so the three plan cards read without wrapping -->
+<div class="container" style="max-width:920px;padding-top:0">
   {% if not subscribed %}
-  <div class="card" style="margin-top:8px">
-    <p class="section-title">{{ t("What you get with AdAgent Pro") }}</p>
-    <div class="pricing-grid">
-      <div class="pricing-card">
+  <section class="landing-section pricing-section">
+    <h2 class="landing-h">{{ t("Choose how much you need") if pass_enabled else t("What you get with AdAgent Pro") }}</h2>
+    <div class="pricing-grid{% if pass_enabled %} pricing-grid-3{% endif %}">
+      <div class="pricing-card pricing-free">
         <div class="pricing-label">{{ t("Free") }}</div>
         <div class="pricing-price">{{ t("$0") }}</div>
-        <ul class="pricing-features">
-          <li>{{ t("First {n} ads per search", n=settings.FREE_ADS_LIMIT) }}</li>
-          <li>{{ t("Leaderboard & AI scores") }}</li>
-          <li class="no">{{ t("Full search results") }}</li>
-          <li class="no">{{ t("Report history") }}</li>
-        </ul>
-        <span style="color:var(--muted);font-size:0.85rem">{{ t("You're on the free plan") }}</span>
+        <p class="pricing-tag">{{ t("Try it out") }}</p>
+        {{ plan_features("free") }}
+        <div class="pricing-note">{{ t("You're on the free plan") }}</div>
       </div>
+      {% if pass_enabled %}
       <div class="pricing-card featured">
+        <div class="pricing-label">{{ t("{h} h pass", h=pass_hours) }}</div>
+        <div class="pricing-price">{{ pass_label }} <span>{{ t("/ {h} h", h=pass_hours) }}</span></div>
+        <p class="pricing-tag">{{ t("Pay once · no subscription") }}</p>
+        {{ plan_features("pass") }}
+        <form action="/subscribe/checkout" method="post">
+          <input type="hidden" name="plan" value="pass">
+          <button type="submit" class="btn btn-green btn-full">{{ t("Get {h} h pass", h=pass_hours) }}</button>
+        </form>
+      </div>
+      {% endif %}
+      <div class="pricing-card{% if not pass_enabled %} featured{% endif %}">
         <div class="pricing-label">Pro</div>
         <div class="pricing-price">{{ price_label }} <span>{{ t("/month") }}</span></div>
-        <ul class="pricing-features">
-          <li>{{ t("All ads analyzed") }}</li>
-          <li>{{ t("Leaderboard & AI scores") }}</li>
-          <li>{{ t("Full search results") }}</li>
-          <li>{{ t("Report history") }}</li>
-        </ul>
-        <a href="/subscribe" class="btn btn-green btn-full">{{ t("Upgrade now →") }}</a>
+        <p class="pricing-tag">{{ t("Cancel any time") }}</p>
+        {{ plan_features("pro") }}
+        <form action="/subscribe/checkout" method="post">
+          <input type="hidden" name="plan" value="monthly">
+          <button type="submit" class="btn {{ 'btn-outline' if pass_enabled else 'btn-green' }} btn-full">{{ t("Subscribe") if pass_enabled else t("Upgrade now →") }}</button>
+        </form>
       </div>
     </div>
-  </div>
+  </section>
   {% endif %}
 
 </div>

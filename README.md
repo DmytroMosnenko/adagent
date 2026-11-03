@@ -2,7 +2,7 @@
 
 AI-powered OLX ad analysis SaaS. Paste any OLX, Otomoto, or Otodom filter URL — AdAgent scrapes every ad, scores it 1–10, flags red flags, and returns a ranked leaderboard report.
 
-**Freemium model:** first 5 ads free, unlimited with Pro subscription ($9.99/month via Stripe).
+**Freemium model:** first 5 ads free; full results with a one-time **48 h pass** (9,99 zł / $2.99, no subscription) or the **Pro** subscription ($9.99 / 39,99 zł per month) — all via Stripe.
 
 ---
 
@@ -42,7 +42,7 @@ Browser → nginx (TLS) → uvicorn (FastAPI)
 - **Web layer** — FastAPI serves both the HTML UI (Jinja2 templates) and the JSON status API. No separate frontend build step.
 - **Analysis** — runs as a FastAPI `BackgroundTask` (asyncio). Playwright collects links and extracts content; OpenAI analyzes each ad and produces a summary; Jinja2 renders the HTML report.
 - **Auth** — passwordless magic link via AWS SES → `httponly` session cookie (7-day TTL).
-- **Billing** — Stripe Checkout (subscription). After payment, the Stripe webhook creates the subscription record and emails a magic sign-in link to the customer.
+- **Billing** — Stripe Checkout. *Pro* is a subscription: after payment the webhook creates the subscription record and emails a magic sign-in link. The *pass* is a one-time payment (`mode=payment`): the webhook (and the `/subscribe/success` redirect, idempotently) writes a row to `access_passes` that grants full access until `expires_at`, and emails a sign-in link. A refund (`charge.refunded`) ends the pass.
 - **Reports** — preset-prompt reports are stored as self-contained `.html` files in `report_storage/`. Custom-prompt results are stored as JSON in the `reports` table.
 
 ---
@@ -187,6 +187,8 @@ In the [Stripe Dashboard → Webhooks](https://dashboard.stripe.com/webhooks), a
   - `customer.subscription.updated`
   - `customer.subscription.deleted`
   - `invoice.payment_failed`
+  - `checkout.session.async_payment_succeeded` *(one-time pass paid with a delayed method)*
+  - `charge.refunded` *(ends a pass when its payment is refunded)*
 
 Copy the **Signing secret** (`whsec_...`) into `STRIPE_WEBHOOK_SECRET` in the env file, then restart:
 
@@ -302,7 +304,9 @@ All variables are read from `secrets/env` (production: `/opt/adagent/secrets/env
 |----------|-------------|
 | `STRIPE_SECRET_KEY` | `sk_live_...` from Stripe Dashboard |
 | `STRIPE_WEBHOOK_SECRET` | `whsec_...` from the Webhook endpoint page |
-| `STRIPE_PRICES_JSON` | JSON map of period → Stripe price ID. Add `weekly`/`daily` when you create those prices: `{"monthly":"price_xxx","weekly":"price_yyy","daily":"price_zzz"}` |
+| `STRIPE_PRICES_JSON` | JSON map of plan → Stripe price ID: `{"monthly":"price_xxx","pass":"price_yyy"}`. `monthly` = Pro subscription; `pass` = **one-time** price for the time-boxed pass (omit it and the pass is not offered anywhere). Any other key is treated as a recurring subscription price. |
+| `PASS_HOURS` | Pass length in hours (default `48`). Copied into the Checkout session at purchase time, so changing it never alters a pass someone already paid for |
+| `PRICE_LABEL_PASS` / `PRICE_LABEL_PASS_PL` | Display-only pass price (`$2.99` / `9,99 zł`). The real charge comes from the Stripe price |
 | `STRIPE_SUCCESS_URL` | Redirect after successful payment |
 | `STRIPE_CANCEL_URL` | Redirect on checkout cancel |
 
@@ -362,12 +366,13 @@ All variables are read from `secrets/env` (production: `/opt/adagent/secrets/env
    ```
    STRIPE_PRICES_JSON={"monthly": "price_xxx"}
    ```
-5. To add weekly or daily plans later, create additional prices and extend the JSON:
+5. **One-time pass** — create a second product `AdAgent 48h Pass` with a price of type **One time**, default currency **PLN `9.99`**, and add a currency option **USD `2.99`** (Checkout is opened in PLN for the Polish UI and USD otherwise, exactly like the monthly price). Enable **BLIK** and **Przelewy24** in [Settings → Payment methods](https://dashboard.stripe.com/settings/payment_methods) — they show up for one-time PLN payments and are what most Polish buyers pay with. Copy the price id:
    ```
-   STRIPE_PRICES_JSON={"monthly": "price_xxx", "weekly": "price_yyy", "daily": "price_zzz"}
+   STRIPE_PRICES_JSON={"monthly": "price_xxx", "pass": "price_yyy"}
    ```
-   The subscribe page automatically renders a button for each configured plan.
-6. Register the webhook endpoint (see [server installation step 7](#7--register-the-stripe-webhook)).
+   Change the length with `PASS_HOURS` (e.g. `72`) — the price label is display-only, change `PRICE_LABEL_PASS*` to match when you change the Stripe price.
+6. Any other key (e.g. `weekly`) is rendered under "Other plans" and bought as a recurring subscription.
+7. Register the webhook endpoint (see [server installation step 7](#7--register-the-stripe-webhook)).
 
 ---
 
@@ -487,7 +492,8 @@ adagent/
 ├── service/                   Business logic
 │   ├── config.py              Pydantic Settings (reads secrets/env)
 │   ├── db.py                  SQLAlchemy async engine + get_db dependency
-│   ├── models.py              ORM models: User, Session, MagicLink, Subscription, Report
+│   ├── models.py              ORM models: User, Session, MagicLink, Subscription, AccessPass, Report
+│   ├── passes.py              One-time pass helpers (expiry maths, duration bounds, time formatting)
 │   ├── schemas.py             Pydantic request/response schemas + validators
 │   ├── crud.py                All database operations
 │   ├── auth.py                Token generation + current user dependency
@@ -587,6 +593,11 @@ FROM reports ORDER BY created_at DESC LIMIT 20;
 SELECT u.email, s.status, s.plan_period, s.current_period_end
 FROM subscriptions s JOIN users u ON u.id = s.user_id
 WHERE s.status = 'active';
+
+-- Active passes
+SELECT u.email, p.hours, p.amount, p.currency, p.status, p.expires_at
+FROM access_passes p JOIN users u ON u.id = p.user_id
+WHERE p.status = 'active' AND p.expires_at > UTC_TIMESTAMP();
 
 -- Manually fail a stuck report
 UPDATE reports SET status='failed', error_message='Manual reset'

@@ -1,0 +1,22 @@
+{#- One shared feature list for the Free / pass / Pro cards (pricing page + landing page), so every
+    card shows the SAME rows in the SAME order and the limits come from config, never from copy.
+    Usage: {% from "_plan_features.html" import plan_features with context %}{{ plan_features("pass") }}
+    plan = "free" | "pass" | "pro" -#}
+{% macro plan_features(plan) %}
+{% set per_day = settings.FREE_REPORTS_PER_CLIENT_PER_DAY %}
+<ul class="pricing-features pricing-matrix">
+  <li>{{ t("AI score & verdict") }}</li>
+  <li>{{ t("Ranked leaderboard") }}</li>
+  <li>{{ t("Report history (signed in)") }}</li>
+  <li class="kv"><span class="k">{{ t("Ads per search") }}</span>
+    {% if plan == "free" %}<span class="v lim">{{ t("First {n} ads", n=settings.FREE_ADS_LIMIT) }}</span>
+    {% else %}<span class="v full">{{ t("All ads") }}</span>{% endif %}</li>
+  <li class="kv"><span class="k">{{ t("Searches per day") }}</span>
+    {% if plan == "free" and per_day > 0 %}<span class="v lim">{{ t("{n} / day", n=per_day) }}</span>
+    {% else %}<span class="v full">{{ t("Unlimited") }}</span>{% endif %}</li>
+  <li class="kv"><span class="k">{{ t("Access") }}</span>
+    {% if plan == "pass" %}<span class="v lim">{{ t("{h} hours", h=settings.PASS_HOURS) }}</span>
+    {% elif plan == "pro" %}<span class="v full">{{ t("Until you cancel") }}</span>
+    {% else %}<span class="v full">{{ t("No time limit") }}</span>{% endif %}</li>
+</ul>
+{% endmacro %}

@@ -2,9 +2,11 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from sqlalchemy import delete, func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .models import User, Session, MagicLink, Subscription, Report, FunnelEvent
+from . import passes
+from .models import User, Session, MagicLink, Subscription, AccessPass, Report, FunnelEvent
 
 
 # ── Users ──────────────────────────────────────────────────────────────────────
@@ -25,7 +27,15 @@ async def get_or_create_user(db: AsyncSession, email: str) -> tuple[User, bool]:
         return user, False
     user = User(email=email)
     db.add(user)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        # Two requests creating the same new buyer at once (Stripe webhook + success redirect).
+        await db.rollback()
+        user = await get_user_by_email(db, email)
+        if user:
+            return user, False
+        raise
     await db.refresh(user)
     return user, True
 
@@ -160,6 +170,78 @@ async def is_subscribed(db: AsyncSession, user_id: int) -> bool:
     if sub.status not in ("active", "trialing"):
         return False
     return sub.current_period_end > datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+# ── Passes (one-time, time-boxed access) ───────────────────────────────────────
+
+async def get_pass_until(db: AsyncSession, user_id: int) -> Optional[datetime]:
+    """End of the user's current pass access (naive UTC), or None if no pass is active."""
+    r = await db.execute(
+        select(func.max(AccessPass.expires_at)).where(
+            AccessPass.user_id == user_id,
+            AccessPass.status == "active",
+            AccessPass.expires_at > passes.utcnow(),
+        )
+    )
+    return r.scalar_one_or_none()
+
+
+async def get_pass_by_session(db: AsyncSession, stripe_session_id: str) -> Optional[AccessPass]:
+    r = await db.execute(select(AccessPass).where(AccessPass.stripe_session_id == stripe_session_id))
+    return r.scalar_one_or_none()
+
+
+async def create_pass(
+    db: AsyncSession,
+    user_id: int,
+    stripe_session_id: str,
+    hours: int,
+    stripe_payment_intent: Optional[str] = None,
+    amount: Optional[int] = None,
+    currency: Optional[str] = None,
+) -> tuple[AccessPass, bool]:
+    """
+    Grant a pass for one paid Checkout session. Idempotent on stripe_session_id:
+    returns (pass, created) — created is False when this payment was already fulfilled
+    (webhook retry, or the webhook and the success-page redirect racing each other).
+    A buyer who still has time left gets the new pass added after it.
+    """
+    existing = await get_pass_by_session(db, stripe_session_id)
+    if existing:
+        return existing, False
+
+    now = passes.utcnow()
+    expires_at = passes.compute_expiry(now, await get_pass_until(db, user_id), hours)
+    row = AccessPass(
+        user_id=user_id, stripe_session_id=stripe_session_id, hours=hours,
+        stripe_payment_intent=stripe_payment_intent, amount=amount,
+        currency=currency.lower() if currency else None,
+        status="active", expires_at=expires_at,
+    )
+    db.add(row)
+    try:
+        await db.commit()
+    except IntegrityError:
+        # Lost the race against a concurrent fulfilment of the same session.
+        await db.rollback()
+        existing = await get_pass_by_session(db, stripe_session_id)
+        if existing:
+            return existing, False
+        raise
+    await db.refresh(row)
+    return row, True
+
+
+async def revoke_pass_by_payment_intent(db: AsyncSession, payment_intent: str) -> bool:
+    """Refunded payment → end the pass now. Returns True if a pass was affected."""
+    now = passes.utcnow()
+    r = await db.execute(
+        update(AccessPass)
+        .where(AccessPass.stripe_payment_intent == payment_intent, AccessPass.status == "active")
+        .values(status="refunded", expires_at=now)
+    )
+    await db.commit()
+    return bool(r.rowcount)
 
 
 # ── Reports ────────────────────────────────────────────────────────────────────

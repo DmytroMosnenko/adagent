@@ -84,16 +84,40 @@ a { color: var(--navy); }
 
 /* ── PRICING ── */
 .pricing-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 28px; }
-.pricing-card { border: 2px solid var(--border); border-radius: var(--radius); padding: 24px; }
+.pricing-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.pricing-grid-3 .pricing-card { padding: 18px 16px; }
+.pricing-grid-3 .btn-full { font-size: 0.9rem; padding: 10px 8px; }
+.pricing-grid-3 .pricing-card .btn-full, .pricing-grid-3 .pricing-card .pricing-note { min-height: 54px; }  /* room for a 2-line label on narrow cards, same height on all */
+.pricing-grid-3 .pricing-price { font-size: clamp(1.3rem, 2.4vw, 1.7rem); margin-bottom: 8px; white-space: nowrap; }
+.pricing-grid-3 .pricing-price span { font-size: 0.8rem; }
+.pricing-card { border: 2px solid var(--border); border-radius: var(--radius); padding: 24px;
+                display: flex; flex-direction: column; }
+/* Every card shares the same skeleton, so rows line up across cards:
+   name (1 line) / price / tagline (reserved 2 lines) / features (grow) / button (pinned to bottom) */
+.pricing-label { white-space: nowrap; }
+.pricing-tag { font-size: 0.82rem; color: var(--muted); line-height: 1.35; min-height: 2.7em; margin: -6px 0 16px; }
+.pricing-card > .btn, .pricing-card > form, .pricing-card > .pricing-note { margin-top: auto; }
+.pricing-card .btn-full { display: flex; align-items: center; justify-content: center;
+                          min-height: 46px; text-align: center; line-height: 1.2; }
+.pricing-note { min-height: 46px; display: flex; align-items: center; justify-content: center;
+                font-size: 0.85rem; color: var(--muted); }
 .pricing-card.featured { border-color: var(--navy); }
 .pricing-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: .07em;
                  color: var(--muted); margin-bottom: 8px; }
 .pricing-price { font-size: 2rem; font-weight: 800; color: var(--navy); margin-bottom: 16px; }
-.pricing-price span { font-size: 0.95rem; font-weight: 400; color: var(--muted); }
-.pricing-features { list-style: none; margin-bottom: 20px; }
+.pricing-price span { font-size: 0.95rem; font-weight: 400; color: var(--muted); white-space: nowrap; }
+.pricing-features { list-style: none; margin-bottom: 20px; flex: 1; }
 .pricing-features li { padding: 5px 0; font-size: 0.88rem; }
 .pricing-features li::before { content: "✓  "; color: var(--green); font-weight: 700; }
 .pricing-features li.no { color: var(--muted); }
+/* shared plan matrix: value rows (kv) are stacked label-over-value so every card's rows are the same height */
+.pricing-matrix li.kv::before { content: none; }
+.pricing-matrix li.kv { display: block; padding: 7px 0 5px; border-top: 1px solid var(--border); margin-top: 6px; }
+.pricing-matrix li.kv + li.kv { border-top: 0; margin-top: 0; }
+.pricing-matrix .k { display: block; font-size: 0.72rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.pricing-matrix .v { display: block; font-weight: 700; font-size: 0.92rem; }
+.pricing-matrix .v.full { color: var(--green); }
+.pricing-matrix .v.lim  { color: #b45309; }
 .pricing-features li.no::before { content: "✗  "; color: #cbd5e1; }
 
 /* ── STATUS ── */
@@ -357,7 +381,7 @@ table.history td.h-url a { color: var(--muted); font-size: 0.82rem; }
 .consent-btns .btn { padding: 8px 16px; font-size: 0.85rem; }
 
 @media (max-width: 560px) {
-  .preset-grid, .pricing-grid { grid-template-columns: 1fr; }
+  .preset-grid, .pricing-grid, .pricing-grid-3 { grid-template-columns: 1fr; }
   .hero h1 { font-size: 1.55rem; }
   .container { padding: 24px 12px 60px; }
   .card { padding: 18px; }
@@ -417,3 +441,21 @@ table.history td.h-url a { color: var(--muted); font-size: 0.82rem; }
   .demo-pick { flex-direction: row; align-items: center; gap: 10px; min-height: 52px; }
   .demo-top { grid-template-columns: 1fr; }
 }
+
+/* 3-plan pricing (Free / one-time pass / Pro) */
+@media (max-width: 820px) {
+  .pricing-grid-3 { grid-template-columns: 1fr; }
+  .pricing-grid-3 .pricing-free { order: 3; }
+}
+
+/* pass-until chip in the nav must never push the nav wider than a phone */
+.nav-pass { white-space: nowrap; }
+@media (max-width: 480px) {
+  .site-nav { padding: 0 10px; gap: 4px; }
+  .site-nav .nav-link { padding: 4px 6px; font-size: 0.82rem; }
+  .site-nav .nav-btn { padding: 6px 10px; }
+}
+
+/* landing pricing sits straight on the page background (no outer card), so its cards need their own fill */
+.pricing-section .pricing-card { background: #fff; }
+.pricing-section .pricing-grid { margin-bottom: 0; }

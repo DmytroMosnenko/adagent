@@ -26,7 +26,9 @@
         {{ t("Sign out") }}
       </button>
     </form>
-    {% if not subscribed %}
+    {% if pass_until_label %}
+      <a href="/subscribe" class="nav-link nav-pass" title="{{ t('Your pass is active') }} — {{ t('until {until}', until=pass_until_label) }}">⏱ {{ pass_until_label }}</a>
+    {% elif not subscribed %}
       <a href="/subscribe" class="nav-btn">{{ t("Upgrade →") }}</a>
     {% endif %}
   {% else %}

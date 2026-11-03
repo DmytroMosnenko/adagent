@@ -11,6 +11,7 @@ Usage
 """
 from __future__ import annotations
 
+import re
 from typing import Callable, Optional
 
 UI_LANGUAGES = ("en", "pl")
@@ -44,6 +45,9 @@ def pick_ui_language(query_lang: Optional[str],
     return DEFAULT_UI_LANGUAGE
 
 
+_HOURS_RE = re.compile(r"(\d) h\b")
+
+
 def translate(text: str, lang: Optional[str] = None, **kw) -> str:
     """Translate `text` (English) into `lang`; format with **kw afterwards."""
     out = text
@@ -58,6 +62,7 @@ def translate(text: str, lang: Optional[str] = None, **kw) -> str:
             out = hit
     if kw:
         out = out.format(**kw)
+    out = _HOURS_RE.sub("\\1\u00a0h", out)   # "48 h" never wraps between number and unit
     return out
 
 
@@ -405,4 +410,62 @@ PL: dict[str, str] = {
     "Sample data for illustration — not a live search.": "Dane przykładowe, ilustracyjne — to nie jest wyszukiwanie na żywo.",
     "Get this report for my own search →": "Chcę taki raport dla mojego wyszukiwania →",
     "In the OLX app: Share → Copy link": "W aplikacji OLX: Udostępnij → Kopiuj link",
+
+    # ── one-time pass (no subscription) ──
+    "{h} h pass": "Dostęp {h} h",
+    "Try it out": "Na próbę",
+    "Pay once · no subscription": "Płacisz raz · bez subskrypcji",
+    "For frequent searching · cancel any time": "Dla częstych wyszukiwań · anuluj kiedy chcesz",
+    "Most popular · cancel any time": "Najpopularniejszy · anuluj kiedy chcesz",
+    "Unlimited searches for {h} h": "Bez limitu wyszukiwań przez {h} h",
+    "Pro": "Pro",
+    "Report history (signed in)": "Historia (po zalogowaniu)",
+    "or see Pro": "lub zobacz Pro",
+    "AI score & verdict": "Ocena AI i werdykt",
+    "Ads per search": "Ogłoszeń w wyszukiwaniu",
+    "First {n} ads": "Pierwsze {n}",
+    "All ads": "Wszystkie",
+    "Searches per day": "Wyszukiwań dziennie",
+    "{n} / day": "{n} / dzień",
+    "Unlimited": "Bez limitu",
+    "Access": "Dostęp",
+    "{h} hours": "{h} godz.",
+    "Until you cancel": "Do anulowania",
+    "No time limit": "Bez limitu czasu",
+    "/ {h} h": "/ {h} h",
+    "All ads analyzed in every search": "Wszystkie ogłoszenia w każdym wyszukiwaniu",
+    "Run as many searches as you like for {h} h": "Ile chcesz wyszukiwań przez {h} h",
+    "One payment — no subscription, never renews": "Jedna płatność — bez subskrypcji, bez odnawiania",
+    "Get {h} h pass": "Kup dostęp na {h} h",
+    "Add {h} h more": "Dodaj kolejne {h} h",
+    "Pro — Best if you search often": "Pro — dla częstych wyszukiwań",
+    "The {h} h pass is a single payment: it starts right after you pay, ends by itself and is never charged again.":
+        "Dostęp na {h} h to jednorazowa płatność: zaczyna się zaraz po opłaceniu, kończy się sam i nigdy nie jest pobierany ponownie.",
+    "Your pass is active until {until}.": "Twój dostęp jest aktywny do {until}.",
+    "Your pass is active": "Twój dostęp jest aktywny",
+    "until {until}": "do {until}",
+    "Pass active": "Dostęp aktywny",
+    "all ads will be analyzed until {until}.": "wszystkie ogłoszenia będą analizowane do {until}.",
+    "Unlock all ads for {h} h — {price}": "Odblokuj wszystkie ogłoszenia na {h} h — {price}",
+    "Choose how much you need": "Wybierz, ile potrzebujesz",
+    "Do I need a subscription?": "Czy potrzebuję subskrypcji?",
+    "No. To check a single purchase, take a {h} h pass for {price}: one payment, full access to every ad in every search, no renewal. Pro is for people who search regularly.":
+        "Nie. Aby sprawdzić jeden zakup, wystarczy dostęp na {h} h za {price}: jedna płatność, pełny dostęp do każdego ogłoszenia w każdym wyszukiwaniu, bez odnawiania. Pro jest dla osób, które szukają regularnie.",
+    "Pass activated! — AdAgent": "Dostęp aktywny! — AdAgent",
+    "Waiting for payment confirmation": "Czekamy na potwierdzenie płatności",
+    "Your bank hasn't confirmed the payment yet. As soon as it does, we'll email you a sign-in link and your pass will be active.":
+        "Bank jeszcze nie potwierdził płatności. Gdy tylko to zrobi, wyślemy Ci e-mail z linkiem do logowania, a dostęp zostanie aktywowany.",
+    "Your {h} h pass is active!": "Twój dostęp na {h} h jest aktywny!",
+    "Full access until {until}. All ads in every search are analyzed.": "Pełny dostęp do {until}. Analizujemy wszystkie ogłoszenia w każdym wyszukiwaniu.",
+    "It ends by itself — no subscription, nothing to cancel.": "Kończy się sam — bez subskrypcji, nie musisz niczego anulować.",
+    "Open it on the device you'll search from — your pass starts working as soon as you're signed in.":
+        "Otwórz go na urządzeniu, z którego będziesz szukać — dostęp zadziała, gdy tylko się zalogujesz.",
+    "More ads were found but not analyzed: {more} (free plan: {shown} ads shown). Get a {h} h pass or AdAgent Pro to unlock all {total} results.":
+        "Znaleziono więcej ogłoszeń, które nie zostały przeanalizowane: {more} (plan darmowy: pokazano {shown}). Kup dostęp na {h} h lub przejdź na AdAgent Pro, aby odblokować wszystkie wyniki ({total}).",
+    "Unlock all — {price} for {h} h →": "Odblokuj wszystko — {price} na {h} h →",
+    "Your {h} h AdAgent pass is active": "Twój dostęp do AdAgent na {h} h jest aktywny",
+    "Full access is active until {until}. It does not renew and you will not be charged again.":
+        "Pełny dostęp jest aktywny do {until}. Nie odnawia się i nie zostaniesz obciążony/a ponownie.",
+    "Thank you for your purchase!": "Dziękujemy za zakup!",
+    "Click the link below to sign in:": "Kliknij poniższy link, aby się zalogować:",
 }

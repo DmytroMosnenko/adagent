@@ -1,8 +1,34 @@
 {% extends "base.html" %}
-{% block title %}{{ t("Subscribed! — AdAgent") }}{% endblock %}
+{% block title %}{{ t("Pass activated! — AdAgent") if is_pass else t("Subscribed! — AdAgent") }}{% endblock %}
 {% block content %}
 <div class="container" style="max-width:520px;text-align:center;padding-top:60px">
   <div class="card">
+    {% if is_pass and pass_pending %}
+    <div style="font-size:3rem;margin-bottom:16px">⏳</div>
+    <h1 style="color:var(--navy);margin-bottom:12px">{{ t("Waiting for payment confirmation") }}</h1>
+    <p style="color:var(--muted)">
+      {{ t("Your bank hasn't confirmed the payment yet. As soon as it does, we'll email you a sign-in link and your pass will be active.") }}
+    </p>
+    {% elif is_pass %}
+    <div style="font-size:3rem;margin-bottom:16px">⏱</div>
+    <h1 style="color:var(--navy);margin-bottom:12px">{{ t("Your {h} h pass is active!", h=pass_hours) }}</h1>
+    {% if pass_until_label %}
+    <p style="color:var(--muted);margin-bottom:24px">
+      {{ t("Full access until {until}. All ads in every search are analyzed.", until=pass_until_label) }}<br>
+      {{ t("It ends by itself — no subscription, nothing to cancel.") }}
+    </p>
+    <a href="/{{ 'pl' if ui_lang == 'pl' else '' }}" class="btn btn-green btn-full">{{ t("Start analyzing →") }}</a>
+    {% else %}
+    <p style="color:var(--muted);margin-bottom:24px">
+      {{ t("We've sent a sign-in link to your email address.") }}<br>
+      {{ t("Open it on the device you'll search from — your pass starts working as soon as you're signed in.") }}
+    </p>
+    <p style="font-size:0.85rem;color:var(--muted)">
+      {{ t("Check your inbox for the sign-in link.") }}<br>
+      <a href="/auth">{{ t("Request another sign-in link") }}</a>
+    </p>
+    {% endif %}
+    {% else %}
     <div style="font-size:3rem;margin-bottom:16px">🎉</div>
     <h1 style="color:var(--navy);margin-bottom:12px">{{ t("You're now on AdAgent Pro!") }}</h1>
     <p style="color:var(--muted);margin-bottom:24px">
@@ -16,6 +42,7 @@
       {{ t("Check your inbox for the sign-in link.") }}<br>
       <a href="/auth">{{ t("Request another sign-in link") }}</a>
     </p>
+    {% endif %}
     {% endif %}
   </div>
 </div>

@@ -1,58 +1,71 @@
 {% extends "base.html" %}
+{% from "_plan_features.html" import plan_features with context %}
 {% block title %}{{ t("AdAgent Pro — Pricing") }}{% endblock %}
 {% block robots %}{% endblock %}
 
 {% block content %}
-<div class="container" style="max-width:680px">
+<div class="container" style="max-width:{{ '920px' if pass_enabled else '680px' }}">
   <div class="hero" style="padding-top:36px">
     <h1>{{ t("Unlock") }} <span>{{ t("full analysis") }}</span></h1>
     <p>{{ t("See every ad in your search — not just the first {n}.", n=settings.FREE_ADS_LIMIT) }}</p>
   </div>
 
-  {% if subscribed %}
+  {% if subscribed and not pass_until_label %}
   <div class="alert alert-success" style="text-align:center">
     ✅ {{ t("You're already on AdAgent Pro.") }} <a href="/">{{ t("Run a search →") }}</a>
   </div>
   {% else %}
 
+  {% if pass_until_label %}
+  <div class="alert alert-success" style="text-align:center">
+    ⏱ {{ t("Your pass is active until {until}.", until=pass_until_label) }} <a href="/">{{ t("Run a search →") }}</a>
+  </div>
+  {% endif %}
+
   <div class="card">
-    <div class="pricing-grid">
+    <div class="pricing-grid{% if pass_enabled %} pricing-grid-3{% endif %}">
       <!-- Free -->
-      <div class="pricing-card">
+      <div class="pricing-card pricing-free">
         <div class="pricing-label">{{ t("Free") }}</div>
         <div class="pricing-price">{{ t("$0") }}</div>
-        <ul class="pricing-features">
-          <li>{{ t("First {n} ads per search", n=settings.FREE_ADS_LIMIT) }}</li>
-          <li>{{ t("AI score & verdict per ad") }}</li>
-          <li>{{ t("Ranked leaderboard") }}</li>
-          <li class="no">{{ t("All ads in results") }}</li>
-          <li class="no">{{ t("Report history") }}</li>
-        </ul>
+        <p class="pricing-tag">{{ t("Try it out") }}</p>
+        {{ plan_features("free") }}
         <a href="/{{ 'pl' if ui_lang == 'pl' else '' }}" class="btn btn-outline btn-full">{{ t("Continue free") }}</a>
       </div>
 
-      <!-- Pro -->
+      {% if pass_enabled %}
+      <!-- One-time pass -->
       <div class="pricing-card featured">
-        <div class="pricing-label">{{ t("Pro — Most popular") }}</div>
+        <div class="pricing-label">{{ t("{h} h pass", h=pass_hours) }}</div>
+        <div class="pricing-price">{{ pass_label }} <span>{{ t("/ {h} h", h=pass_hours) }}</span></div>
+        <p class="pricing-tag">{{ t("Pay once · no subscription") }}</p>
+        {{ plan_features("pass") }}
+        <form action="/subscribe/checkout" method="post">
+          <input type="hidden" name="plan" value="pass">
+          <button type="submit" class="btn btn-green btn-full">
+            {% if pass_until_label %}{{ t("Add {h} h more", h=pass_hours) }}{% else %}{{ t("Get {h} h pass", h=pass_hours) }}{% endif %}
+          </button>
+        </form>
+      </div>
+      {% endif %}
+
+      <!-- Pro -->
+      <div class="pricing-card{% if not pass_enabled %} featured{% endif %}">
+        <div class="pricing-label">{{ t("Pro") }}</div>
         <div class="pricing-price">{{ price_label }} <span>{{ t("/month") }}</span></div>
-        <ul class="pricing-features">
-          <li>{{ t("All ads analyzed") }}</li>
-          <li>{{ t("AI score & verdict per ad") }}</li>
-          <li>{{ t("Ranked leaderboard") }}</li>
-          <li>{{ t("Full report history") }}</li>
-          <li>{{ t("Cancel any time") }}</li>
-        </ul>
+        <p class="pricing-tag">{{ t("Cancel any time") }}</p>
+        {{ plan_features("pro") }}
         <form action="/subscribe/checkout" method="post">
           <input type="hidden" name="plan" value="monthly">
-          <button type="submit" class="btn btn-green btn-full">{{ t("Subscribe") }} — {{ price_label }}{{ t("/month") }}</button>
+          <button type="submit" class="btn {{ 'btn-outline' if pass_enabled else 'btn-green' }} btn-full">{{ t("Subscribe") }}</button>
         </form>
       </div>
     </div>
 
-    {% if plans|length > 1 %}
+    {% if plans|length > 0 %}
     <p class="section-title" style="margin-top:24px">{{ t("Other plans") }}</p>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
-      {% for plan in plans if plan.period != 'monthly' %}
+      {% for plan in plans %}
       <form action="/subscribe/checkout" method="post">
         <input type="hidden" name="plan" value="{{ plan.period }}">
         <button type="submit" class="btn btn-outline" style="padding:8px 18px;font-size:0.85rem">
@@ -67,6 +80,9 @@
   <div class="card" style="font-size:0.88rem;color:var(--muted)">
     <p><strong style="color:var(--text)">{{ t("How it works:") }}</strong> {{ t("after payment we email you a sign-in link. Click it to access your account and all your reports.") }}</p>
     <p style="margin-top:8px">{{ t("Payment is processed securely by Stripe. We never store card details. Cancel any time from your Stripe portal.") }}</p>
+    {% if pass_enabled %}
+    <p style="margin-top:8px">{{ t("The {h} h pass is a single payment: it starts right after you pay, ends by itself and is never charged again.", h=pass_hours) }}</p>
+    {% endif %}
   </div>
 
   {% endif %}

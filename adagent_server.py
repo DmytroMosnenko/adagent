@@ -31,7 +31,6 @@ from service.logger import get_logger, setup_root_logging
 # Apply unified log formatting before any third-party loggers are configured
 setup_root_logging()
 from service import crud, auth, email_client, stripe_client, scraper, i18n, funnel, url_guard, passes
-from service.demo_data import DEMO_EXAMPLES
 from service.tasks import run_analysis
 
 logger = get_logger(__name__)
@@ -188,7 +187,6 @@ async def _render_index(request: Request, db: AsyncSession, session_token: Optio
         "error": None if error == "invalid_url" else error_text,
         "url_error": error_text if error == "invalid_url" else None,
         "default_language": default_language,
-        "demo_examples": DEMO_EXAMPLES,
         "funnel_exclude": funnel_exclude,
     }, lang=lang)
 

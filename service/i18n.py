@@ -126,7 +126,6 @@ PL: dict[str, str] = {
     "Analyze →": "Analizuj →",
     "No sign-up needed for the free tier. Analysis takes about 5–10 minutes — you can close the tab and come back.":
         "Wersja darmowa nie wymaga rejestracji. Analiza trwa ok. 5–10 minut — możesz zamknąć kartę i wrócić później.",
-    "See a sample report →": "Zobacz przykładowy raport →",
     "How it works": "Jak to działa",
     "Paste a search link": "Wklej link do wyszukiwania",
     "Set your filters on OLX, Otomoto or Otodom and copy the address from the browser bar.": "Ustaw filtry na OLX, Otomoto lub Otodom i skopiuj adres z paska przeglądarki.",
@@ -402,13 +401,10 @@ PL: dict[str, str] = {
     # ── Stripe Checkout text ──
     "By subscribing you accept the [Terms of Service]({terms}) and the [Privacy Policy]({privacy}), and you ask for the digital service to start immediately, acknowledging that you lose your right of withdrawal once it has begun.":
         "Subskrybując, akceptujesz [Regulamin]({terms}) i [Politykę prywatności]({privacy}) oraz wyrażasz zgodę na natychmiastowe rozpoczęcie świadczenia usługi cyfrowej, przyjmując do wiadomości, że po jej rozpoczęciu tracisz prawo do odstąpienia od umowy.",
-    # ── landing: instant demo / OLX app helper ──
-    "See a finished report in 2 seconds": "Zobacz gotowy raport w 2 sekundy",
-    "No link needed — pick an example search:": "Bez wklejania linku — wybierz przykładowe wyszukiwanie:",
-    "Red flags": "Czerwone flagi",
-    "Positives": "Plusy",
-    "Sample data for illustration — not a live search.": "Dane przykładowe, ilustracyjne — to nie jest wyszukiwanie na żywo.",
-    "Get this report for my own search →": "Chcę taki raport dla mojego wyszukiwania →",
+    # ── landing: how it works / example / OLX app helper ──
+    "Show details": "Pokaż szczegóły",
+    "No link yet? See an example report →": "Nie masz jeszcze linku? Zobacz przykładowy raport →",
+    "Preset chosen automatically from your link": "Preset wybrany automatycznie na podstawie linku",
     "In the OLX app: Share → Copy link": "W aplikacji OLX: Udostępnij → Kopiuj link",
 
     # ── one-time pass (no subscription) ──

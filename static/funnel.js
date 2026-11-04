@@ -121,26 +121,11 @@
     h.value = sid;
   })();
 
-  // ── demo block seen (impression, once per tab session) ──────────────────────
-  safe(function () {
-    var demo = document.getElementById("demo");
-    if (!demo || !("IntersectionObserver" in window)) return;
-    var io = new IntersectionObserver(function (entries) {
-      if (entries.some(function (e) { return e.isIntersecting; })) {
-        io.disconnect();
-        once("aa_demo_seen", function () { send("demo_open"); });
-      }
-    }, { threshold: 0.4 });
-    io.observe(demo);
-  })();
-
-  // ── clicks: demo picks, demo CTA, sample report ─────────────────────────────
+  // ── clicks: sample report ───────────────────────────────────────────────────
   document.addEventListener("click", safe(function (e) {
-    var el = e.target && e.target.closest ? e.target.closest("[data-demo-pick],[data-demo-cta],[data-funnel]") : null;
+    var el = e.target && e.target.closest ? e.target.closest("[data-funnel]") : null;
     if (!el) return;
-    if (el.hasAttribute("data-demo-pick")) send("demo_pick", { detail: el.getAttribute("data-demo-pick") });
-    else if (el.hasAttribute("data-demo-cta")) send("demo_cta_click", { detail: el.getAttribute("data-demo-cta") });
-    else if (el.getAttribute("data-funnel") === "sample") send("sample_report_click");
+    if (el.getAttribute("data-funnel") === "sample") send("sample_report_click");
   }), true);
 
   // ── URL field ───────────────────────────────────────────────────────────────

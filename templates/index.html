@@ -26,13 +26,6 @@
 <div class="hero hero-landing">
   <h1>{{ t("Find the best deal,") }}<br><span>{{ t("powered by AI") }}</span></h1>
   <p>{{ t("Paste any OLX search link. AdAgent reads every ad, scores it 1–10, flags red flags, and gives you a ranked leaderboard in minutes.") }}</p>
-  <ol class="hero-steps">
-    <li><span class="step-n">1</span>{{ t("Paste a search link") }}</li>
-    <li class="hero-steps-arrow" aria-hidden="true">→</li>
-    <li><span class="step-n">2</span>{{ t("AI reads every ad") }}</li>
-    <li class="hero-steps-arrow" aria-hidden="true">→</li>
-    <li><span class="step-n">3</span>{{ t("Get a ranked report") }}</li>
-  </ol>
 </div>
 
 <div class="container" style="max-width:680px;padding-bottom:0">
@@ -41,56 +34,92 @@
   <div class="alert alert-error">{{ error }}</div>
   {% endif %}
 
-  {% set L = ui_lang if ui_lang in ('pl', 'en') else 'en' %}
-  <!-- Instant demo: pre-generated examples, rendered server-side (no request, no LLM cost per click).
-       Without JS the pick links are #anchors and CSS :target opens the panel. -->
-  <section class="card demo" id="demo" aria-labelledby="demo-h">
-    <h2 class="demo-h" id="demo-h"><span class="shot-chip">{{ t("Example") }}</span>{{ t("See a finished report in 2 seconds") }}</h2>
-    <p class="demo-sub">{{ t("No link needed — pick an example search:") }}</p>
-    <div class="demo-picks">
-      {% for ex in demo_examples %}
-      <a class="demo-pick" href="#demo-{{ ex.id }}" data-demo-pick="{{ ex.id }}"
-         aria-controls="demo-{{ ex.id }}" aria-expanded="false">
-        <span class="demo-pick-ico" aria-hidden="true">{{ ex.icon }}</span><span>{{ ex.title[L] }}</span>
-      </a>
-      {% endfor %}
-    </div>
-
-    {% for ex in demo_examples %}
-    <div class="demo-panel" id="demo-{{ ex.id }}" role="region" aria-label="{{ ex.title[L] }}">
-      <p class="demo-meta"><span class="shot-chip">{{ t("Example") }}</span>{{ ex.query[L] }}</p>
-      <ol class="demo-rows">
-        {% for r in ex.rows %}
-        {% set vc = {'worth_viewing': 'g', 'maybe': 'a', 'skip': 'r'}[r.verdict] %}
-        <li class="demo-row">
-          <span class="demo-rank">{{ loop.index }}</span>
-          <div>
-            <b class="demo-title">{{ r.title }}</b>
-            <span class="demo-reason">{{ r.reason[L] }}</span>
-            <span class="demo-pills">
-              <em class="demo-pill {{ vc }}">{{ t({'worth_viewing': 'Worth Viewing', 'maybe': 'Maybe', 'skip': 'Skip'}[r.verdict]) }}</em>
-              <em class="demo-pill {{ 'g' if r.price_tag == 'fair' else 'r' }}">{{ t('Fair price' if r.price_tag == 'fair' else 'High price') }}</em>
-            </span>
+  <!-- How it works: leaderboard-style collapse — step number + title stay visible, the rest fades out.
+       Without JS the block simply stays fully open (the button is hidden until the script runs). -->
+  <section class="how" id="how" aria-label="{{ t('How it works') }}">
+    <div class="how-body" id="how-body">
+      <div class="steps">
+        <div class="step">
+          <div class="step-head"><span class="step-n">1</span><h3>{{ t("Paste a search link") }}</h3></div>
+          <div class="mock" aria-hidden="true">
+            <div class="mock-line"><div><span class="lbl">OLX</span><span class="txt"><mark>olx.pl/motoryzacja/samochody/…</mark></span></div></div>
+            <div class="mock-keys"><kbd>Ctrl</kbd>+<kbd>C</kbd><span>↓</span><kbd>Ctrl</kbd>+<kbd>V</kbd></div>
+            <div class="mock-line focus"><div><span class="lbl">AdAgent</span><span class="txt">olx.pl/motoryzacja/samochody/…<i></i></span></div></div>
           </div>
-          <div class="demo-side">
-            <b class="demo-score {{ vc }}">{{ '%.1f'|format(r.score) }}</b>
-            <span class="demo-price">{{ '{:,}'.format(r.price)|replace(',', '\u00a0') }}&nbsp;PLN</span>
+          <p>{{ t("Set your filters on OLX, Otomoto or Otodom and copy the address from the browser bar.") }}</p>
+        </div>
+        <div class="step">
+          <div class="step-head"><span class="step-n">2</span><h3>{{ t("AI reads every ad") }}</h3></div>
+          <div class="mock" aria-hidden="true">
+            <div class="mock-line"><span class="txt"><i class="mock-ok">✓</i>Ford Focus 2018</span></div>
+            <div class="mock-line"><span class="txt"><i class="mock-ok">✓</i>VW Golf 2017</span></div>
+            <div class="mock-line"><span class="txt"><i class="mock-spin"></i>Opel Astra 2016</span></div>
           </div>
-        </li>
-        {% endfor %}
-      </ol>
-      <p class="demo-summary"><b>{{ t("Market summary") }}:</b> {{ ex.summary[L] }}</p>
-      <div class="demo-top">
-        <div><h4>{{ t("Red flags") }} · #1</h4>
-          <ul class="flags">{% for x in ex.top.red_flags[L] %}<li>{{ x }}</li>{% endfor %}</ul></div>
-        <div><h4>{{ t("Positives") }} · #1</h4>
-          <ul class="pos">{% for x in ex.top.positives[L] %}<li>{{ x }}</li>{% endfor %}</ul></div>
+          <p>{{ t("Each listing is analyzed one by one — the ad text is cross-checked with what is known about that exact model or building.") }}</p>
+        </div>
+        <div class="step">
+          <div class="step-head"><span class="step-n">3</span><h3>{{ t("Get a ranked report") }}</h3></div>
+          <div class="mock" aria-hidden="true">
+            <div class="mock-line"><div><b>Ford Focus</b><em class="mock-pill g">{{ t("Worth Viewing") }}</em></div><b class="mock-score g">8.7</b></div>
+            <div class="mock-line"><div><b>VW Golf</b><em class="mock-pill a">{{ t("Maybe") }}</em></div><b class="mock-score a">7.9</b></div>
+            <div class="mock-line"><div><b>Audi A4</b><em class="mock-pill r">{{ t("Skip") }}</em></div><b class="mock-score r">4.7</b></div>
+          </div>
+          <p>{{ t("A leaderboard with scores, red flags and a market summary — so you know which offers to view first.") }}</p>
+        </div>
       </div>
-      <p class="demo-note">{{ t("Sample data for illustration — not a live search.") }}</p>
-      <a class="btn btn-green btn-full demo-cta" href="#filter_url" data-demo-cta="{{ ex.id }}">{{ t("Get this report for my own search →") }}</a>
     </div>
-    {% endfor %}
+    <button type="button" class="how-more" id="how-more" aria-expanded="false" aria-controls="how-body" hidden
+            data-more="{{ t('Show details') }}" data-less="{{ t('Show less') }}"><span class="how-more-text">{{ t("Show details") }}</span><span class="how-more-icon" aria-hidden="true">▾</span></button>
   </section>
+  <script>
+    // Leaderboard-style collapse: explicit px heights so the height can transition smoothly.
+    // Without JS this script never runs and the block simply stays fully open.
+    (function () {
+      var box = document.getElementById("how"), body = document.getElementById("how-body"), btn = document.getElementById("how-more");
+      if (!box || !body || !btn) return;
+      var text = btn.querySelector(".how-more-text"), timer = null, PEEK = 140;
+      var mobile = window.matchMedia ? matchMedia("(max-width: 560px)") : {matches: false};
+      var still = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+      function natural() { var h = body.style.height; body.style.height = "auto"; var n = body.scrollHeight; body.style.height = h; return n; }
+      function collapsedHeight() { var n = natural(); return mobile.matches ? n : Math.min(PEEK, n); }   // phone: just the title rows
+
+      function finish(open) {
+        timer = null;
+        body.classList.remove("is-animating");
+        if (open) body.style.height = "";                    // back to auto, so later resizes just work
+      }
+      function animate(from, to, open) {
+        clearTimeout(timer);
+        if (still || from === to) { body.style.height = open ? "" : to + "px"; finish(open); return; }
+        body.classList.add("is-animating");
+        body.style.height = from + "px";
+        void body.offsetHeight;                              // commit the start value before changing it
+        body.style.height = to + "px";
+        timer = setTimeout(function () { finish(open); }, 500);
+      }
+      function set(open, initial) {
+        var from = body.offsetHeight;
+        box.classList.toggle("is-collapsed", !open);
+        btn.setAttribute("aria-expanded", open ? "true" : "false");
+        text.textContent = btn.getAttribute(open ? "data-less" : "data-more");
+        var to = open ? natural() : collapsedHeight();
+        if (initial) { if (!open) body.style.height = to + "px"; return; }
+        animate(from, to, open);
+      }
+      function refresh() { if (box.classList.contains("is-collapsed") && !timer) body.style.height = collapsedHeight() + "px"; }
+
+      btn.hidden = false;
+      set(false, true);
+      btn.addEventListener("click", function () {
+        var open = btn.getAttribute("aria-expanded") !== "true";
+        set(open);
+        if (!open && box.getBoundingClientRect().top < 0) box.scrollIntoView({behavior: "smooth", block: "nearest"});
+      });
+      window.addEventListener("resize", refresh);
+      window.addEventListener("load", refresh);              // web fonts can change the title wrapping
+    })();
+  </script>
 
   <div class="card">
     <form action="/analyze" method="post">
@@ -106,6 +135,7 @@
         <p class="form-error" id="filter_url_error" role="alert"{% if not url_error %} hidden{% endif %}>{{ url_error or "" }}</p>
         <p class="form-hint">{{ t("Open OLX, Otomoto or Otodom, set your filters (brand, price, year…), then copy the address from the browser bar and paste it here.") }}</p>
         <p class="form-hint form-hint-app">📱 {{ t("In the OLX app: Share → Copy link") }}</p>
+        <p class="form-hint"><a href="{{ settings.SAMPLE_REPORT_URL or '#example' }}"{% if settings.SAMPLE_REPORT_URL %} target="_blank" rel="noopener"{% endif %} data-funnel="sample">{{ t("No link yet? See an example report →") }}</a></p>
       </div>
 
       <!-- Preset selector -->
@@ -126,6 +156,8 @@
             <span class="preset-card-desc">{{ t("Write your own analysis instructions") }}</span>
           </label>
         </div>
+
+        <p class="form-hint preset-auto" id="preset-auto" hidden>✓ {{ t("Preset chosen automatically from your link") }}</p>
 
         <!-- Custom prompt fields (shown via JS) -->
         <div id="custom-fields" style="display:none" class="preset-custom">
@@ -177,43 +209,11 @@
 
       <button type="submit" class="btn btn-primary btn-full">{{ t("Analyze →") }}</button>
       <p class="form-hint" style="text-align:center;margin-top:10px">{{ t("No sign-up needed for the free tier. Analysis takes about 5–10 minutes — you can close the tab and come back.") }}</p>
-      {% if settings.SAMPLE_REPORT_URL %}
-      <p style="text-align:center;margin-top:6px"><a href="{{ settings.SAMPLE_REPORT_URL }}" target="_blank" rel="noopener" data-funnel="sample">{{ t("See a sample report →") }}</a></p>
-      {% endif %}
     </form>
   </div>
 
-  <!-- How it works -->
-  <section class="landing-section">
-    <h2 class="landing-h">{{ t("How it works") }}</h2>
-    <div class="steps">
-      <div class="step"><span class="step-n">1</span>
-        <h3>{{ t("Paste a search link") }}</h3>
-        <p>{{ t("Set your filters on OLX, Otomoto or Otodom and copy the address from the browser bar.") }}</p>
-        <div class="mock" aria-hidden="true">
-          <div class="mock-line"><div><span class="lbl">OLX</span><span class="txt"><mark>olx.pl/motoryzacja/samochody/…</mark></span></div></div>
-          <div class="mock-keys"><kbd>Ctrl</kbd>+<kbd>C</kbd><span>↓</span><kbd>Ctrl</kbd>+<kbd>V</kbd></div>
-          <div class="mock-line focus"><div><span class="lbl">AdAgent</span><span class="txt">olx.pl/motoryzacja/samochody/…<i></i></span></div></div>
-        </div></div>
-      <div class="step"><span class="step-n">2</span>
-        <h3>{{ t("AI reads every ad") }}</h3>
-        <p>{{ t("Each listing is analyzed one by one — the ad text is cross-checked with what is known about that exact model or building.") }}</p>
-        <div class="mock" aria-hidden="true">
-          <div class="mock-line"><span class="txt"><i class="mock-ok">✓</i>Ford Focus 2018</span></div>
-          <div class="mock-line"><span class="txt"><i class="mock-ok">✓</i>VW Golf 2017</span></div>
-          <div class="mock-line"><span class="txt"><i class="mock-spin"></i>Opel Astra 2016</span></div>
-        </div></div>
-      <div class="step"><span class="step-n">3</span>
-        <h3>{{ t("Get a ranked report") }}</h3>
-        <p>{{ t("A leaderboard with scores, red flags and a market summary — so you know which offers to view first.") }}</p>
-        <div class="mock" aria-hidden="true">
-          <div class="mock-line"><div><b>Ford Focus</b><em class="mock-pill g">{{ t("Worth Viewing") }}</em></div><b class="mock-score g">8.7</b></div>
-          <div class="mock-line"><div><b>VW Golf</b><em class="mock-pill a">{{ t("Maybe") }}</em></div><b class="mock-score a">7.9</b></div>
-          <div class="mock-line"><div><b>Audi A4</b><em class="mock-pill r">{{ t("Skip") }}</em></div><b class="mock-score r">4.7</b></div>
-        </div></div>
-    </div>
-
-    <!-- Real report screenshot -->
+  <!-- One example: real report screenshot (the only example on the landing) -->
+  <section class="landing-section example-shot" id="example">
     <p class="shot-lead"><span class="shot-chip">{{ t("Example") }}</span> {{ t("What a finished report looks like") }}</p>
     <figure class="report-shot">
       {% if settings.SAMPLE_REPORT_URL %}<a href="{{ settings.SAMPLE_REPORT_URL }}" target="_blank" rel="noopener" data-funnel="sample">{% endif %}
@@ -231,6 +231,7 @@
       <figcaption>{% if settings.SAMPLE_REPORT_URL %}<a href="{{ settings.SAMPLE_REPORT_URL }}" target="_blank" rel="noopener" data-funnel="sample">{{ t("Open the full sample report →") }}</a>{% endif %}</figcaption>
     </figure>
   </section>
+
 
   <!-- What is in the report -->
   <section class="landing-section">
@@ -322,6 +323,41 @@
   }
   radios.forEach(r => r.addEventListener('change', toggle));
   toggle();
+
+  // Pick the analysis preset from the pasted link (vehicles vs real estate).
+  // Only runs while the visitor has not chosen a preset by hand, and only selects
+  // a preset that exists in this deployment.
+  (function () {
+    var urlInput = document.getElementById('filter_url'), note = document.getElementById('preset-auto');
+    if (!urlInput) return;
+    var chosenByHand = false;
+    document.querySelectorAll('.preset-card').forEach(function (c) {
+      c.addEventListener('click', function () { chosenByHand = true; if (note) note.hidden = true; });
+    });
+    function kindOf(raw) {
+      var u;
+      try { u = new URL((raw || '').trim()); } catch (e) { return null; }
+      var host = u.hostname.toLowerCase();
+      if (host === 'otodom.pl' || host.endsWith('.otodom.pl')) return 'realestate';
+      if (host === 'otomoto.pl' || host.endsWith('.otomoto.pl')) return 'vehicles';
+      if (host === 'olx.pl' || host.endsWith('.olx.pl')) {
+        var seg = u.pathname.toLowerCase().split('/').filter(Boolean).slice(0, 2);   // /d/motoryzacja/… or /motoryzacja/…
+        if (seg.indexOf('motoryzacja') !== -1) return 'vehicles';
+        if (seg.indexOf('nieruchomosci') !== -1) return 'realestate';
+      }
+      return null;
+    }
+    function autoSelect() {
+      if (chosenByHand) return;
+      var kind = kindOf(urlInput.value);
+      if (!kind) return;
+      var radio = document.querySelector('input[name="prompt_preset"][value="' + kind + '"]');
+      if (!radio) return;
+      if (!radio.checked) { radio.checked = true; radio.dispatchEvent(new Event('change', {bubbles: true})); }
+      if (note) note.hidden = false;
+    }
+    urlInput.addEventListener('input', autoSelect);
+  })();
 
   // Make the whole preset-card label clickable
   document.querySelectorAll('.preset-card').forEach(card => {
@@ -435,7 +471,6 @@
   window.addEventListener("pagehide", savePreset);
 })();
 </script>
-<script src="/static/demo.js?v={{ settings.APP_VERSION }}" defer></script>
 {% if funnel_exclude %}
 <script>try { localStorage.setItem("aa_notrack", "1"); } catch (e) {}</script>
 {% elif settings.FUNNEL_ENABLED %}

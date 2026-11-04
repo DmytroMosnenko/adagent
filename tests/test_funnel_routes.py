@@ -212,21 +212,23 @@ async def test_email_endpoint_sends_to_admin_and_purges_old_rows(client, db, fun
 # ── landing page ───────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_landing_has_demo_helper_and_sample_links_work_without_js(client):
+async def test_landing_has_collapsed_how_it_works_and_single_example(client):
     pl = (await client.get("/pl")).text
-    assert 'id="demo"' in pl and 'href="#demo-car1"' in pl and 'id="demo-flat1"' in pl      # anchors = no-JS fallback
-    assert "Udostępnij → Kopiuj link" in pl and "Przykład" in pl
-    assert 'action="/analyze"' in pl and 'name="filter_url"' in pl                           # form untouched
-    assert "/static/funnel.js" in pl and "/static/demo.js" in pl
+    assert 'id="how"' in pl and 'id="how-more"' in pl and 'class="step-head"' in pl and "<details" not in pl.split('id="how"')[1].split('id="filter_url"')[0]   # leaderboard-style collapse, steps open without JS
+    assert 'id="demo"' not in pl and "demo.js" not in pl and "data-demo-pick" not in pl                  # instant demo is gone
+    assert pl.count('class="report-shot"') == 1 and 'id="example"' in pl                                  # the one example
+    assert 'id="preset-auto"' in pl and "kindOf(" in pl                                                   # preset auto-select
+    assert 'action="/analyze"' in pl and 'name="filter_url"' in pl                                        # form untouched
+    assert "/static/funnel.js" in pl and "Pokaż szczegóły" in pl and "Nie masz jeszcze linku?" in pl
     en = (await client.get("/en")).text
-    assert "Share → Copy link" in en and "Octavia estate diesel" in en
+    assert "Show details" in en and "No link yet?" in en
 
 
 @pytest.mark.asyncio
 async def test_landing_omits_tracker_when_disabled(client):
     with patch.object(settings, "FUNNEL_ENABLED", False):
         html = (await client.get("/pl")).text
-    assert "funnel.js" not in html and 'id="demo"' in html
+    assert "funnel.js" not in html and 'id="how"' in html
 
 
 # ── excluding own / test accounts ──────────────────────────────────────────────
@@ -244,7 +246,7 @@ async def test_excluded_account_landing_has_no_tracker_but_sets_optout_flag(clie
     with patch.object(settings, "FUNNEL_EXCLUDE_EMAILS", "tester@example.com, other@example.com"):
         html = (await client.get("/pl", cookies={"adagent_session": token})).text
         anon = (await client.get("/pl")).text
-    assert "aa_notrack" in html and "funnel.js" not in html and 'id="demo"' in html
+    assert "aa_notrack" in html and "funnel.js" not in html and 'id="how"' in html
     assert "funnel.js" in anon and "aa_notrack" not in anon
 
 

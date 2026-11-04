@@ -1,0 +1,153 @@
+{
+ "props": {
+  "pageProps": {
+   "data": {
+    "searchAds": {
+     "items": [
+      {
+       "id": 68312852,
+       "href": "[lang]/ad/40m-do-wlasnej-aranzacji-swietna-lokalizacja-2pok-ID4CDic",
+       "slug": "40m-do-wlasnej-aranzacji-swietna-lokalizacja-2pok-ID4CDic",
+       "title": "40m² do własnej aranżacji Świetna lokalizacja 2pok",
+       "dateCreated": "2026-08-14T07:50:08Z",
+       "isPromoted": false,
+       "totalPrice": {
+        "value": 239000,
+        "currency": "PLN"
+       },
+       "hidePrice": false,
+       "areaInSquareMeters": 40.26,
+       "roomsNumber": "TWO"
+      },
+      {
+       "id": 68350092,
+       "href": "[lang]/ad/kolejowa-37-09m2-2-pietro-2pok-kuchnia-ID4CMYQ",
+       "slug": "kolejowa-37-09m2-2-pietro-2pok-kuchnia-ID4CMYQ",
+       "title": "Kolejowa, 37,09m2, 2 piętro, 2pok+kuchnia",
+       "dateCreated": "2026-08-25T21:35:04Z",
+       "isPromoted": false,
+       "totalPrice": {
+        "value": 225000,
+        "currency": "PLN"
+       },
+       "hidePrice": false,
+       "areaInSquareMeters": 37.09,
+       "roomsNumber": "TWO"
+      },
+      {
+       "id": 68349877,
+       "href": "[lang]/ad/mieszkanie-w-kamienicy-ID4CMWn",
+       "slug": "mieszkanie-w-kamienicy-ID4CMWn",
+       "title": "Mieszkanie w kamienicy",
+       "dateCreated": "2026-08-25T19:42:11Z",
+       "isPromoted": false,
+       "totalPrice": {
+        "value": 199900,
+        "currency": "PLN"
+       },
+       "hidePrice": false,
+       "areaInSquareMeters": 33.59,
+       "roomsNumber": "TWO"
+      },
+      {
+       "id": 68349623,
+       "href": "[lang]/ad/kawalerka-blisko-pl-rozyckiego-ID4CMRh",
+       "slug": "kawalerka-blisko-pl-rozyckiego-ID4CMRh",
+       "title": "Kawalerka | Blisko PŁ | Różyckiego",
+       "dateCreated": "2026-08-25T17:50:29Z",
+       "isPromoted": false,
+       "totalPrice": {
+        "value": 189000,
+        "currency": "PLN"
+       },
+       "hidePrice": false,
+       "areaInSquareMeters": 32.15,
+       "roomsNumber": "TWO"
+      },
+      {
+       "id": 68310522,
+       "href": "[lang]/ad/41m-i-okazja-i-do-remontu-i-blisko-manufaktury-ID4CCGC",
+       "slug": "41m-i-okazja-i-do-remontu-i-blisko-manufaktury-ID4CCGC",
+       "title": "41m² I Okazja I Do remontu I Blisko Manufaktury",
+       "dateCreated": "2026-08-13T11:42:10Z",
+       "isPromoted": false,
+       "totalPrice": {
+        "value": 229990,
+        "currency": "PLN"
+       },
+       "hidePrice": false,
+       "areaInSquareMeters": 41.18,
+       "roomsNumber": "TWO"
+      },
+      {
+       "id": 68269588,
+       "href": "[lang]/ad/mieszkanie-40m2-zgierz-ID4Cs2o",
+       "slug": "mieszkanie-40m2-zgierz-ID4Cs2o",
+       "title": "Mieszkanie 40m2, Zgierz",
+       "dateCreated": "2026-07-31T12:35:27Z",
+       "isPromoted": false,
+       "totalPrice": {
+        "value": 220000,
+        "currency": "PLN"
+       },
+       "hidePrice": false,
+       "areaInSquareMeters": 40,
+       "roomsNumber": "TWO"
+      },
+      {
+       "id": 63841594,
+       "href": "[lang]/ad/romana-12-m2-garderoba-ID4jS78",
+       "slug": "romana-12-m2-garderoba-ID4jS78",
+       "title": "Romana 12 - M2+garderoba,",
+       "dateCreated": "2023-01-12T07:52:16Z",
+       "isPromoted": false,
+       "totalPrice": {
+        "value": 220000,
+        "currency": "PLN"
+       },
+       "hidePrice": false,
+       "areaInSquareMeters": 29.9,
+       "roomsNumber": "TWO"
+      },
+      {
+       "id": 67843485,
+       "href": "[lang]/ad/loggiastar2-pokoje-star2-pietrostar-obok-park-podolski-ID4AFbL",
+       "slug": "loggiastar2-pokoje-star2-pietrostar-obok-park-podolski-ID4AFbL",
+       "title": "Loggia⭐2 Pokoje ⭐️2 Piętro⭐ Obok \"Park Podolski\"",
+       "dateCreated": "2026-03-25T10:21:24Z",
+       "isPromoted": false,
+       "totalPrice": {
+        "value": 229000,
+        "currency": "PLN"
+       },
+       "hidePrice": false,
+       "areaInSquareMeters": 36.24,
+       "roomsNumber": "TWO"
+      },
+      {
+       "id": 9000062284,
+       "href": "hpr/[lang]/ad/mieszkanie-1-pokoje-109-m2-nowe-ID9P5lkU",
+       "slug": "40m-do-wlasnej-aranzacji-swietna-lokalizacja-2pok-ID4CDic",
+       "title": "40m² do własnej aranżacji Świetna lokalizacja 2pok",
+       "dateCreated": "1999-02-29 00:00:01",
+       "isPromoted": false,
+       "totalPrice": {
+        "value": 239000,
+        "currency": "PLN"
+       },
+       "hidePrice": false,
+       "areaInSquareMeters": 40.26,
+       "roomsNumber": "TWO"
+      }
+     ],
+     "pagination": {
+      "itemsPerPage": 36,
+      "totalItems": 44,
+      "totalPages": 2,
+      "currentPage": 2
+     }
+    }
+   }
+  }
+ }
+}

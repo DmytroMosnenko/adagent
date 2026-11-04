@@ -892,6 +892,130 @@ async def _read_otodom_total(page) -> Optional[int]:
     return _parse_total_results(text)
 
 
+# ── Otodom: read results from the server-rendered __NEXT_DATA__ ────────────────
+#
+# Otodom injects extra cards into the live DOM AFTER hydration, via client-side
+# GraphQL: "integrated top ads" (withPromotionType=TOPADS, sort=RANDOM) inside
+# [data-cy="search.listing.organic"] itself, plus random/audience-plus promoted
+# cards and, on the last page, a "nearby adverts" block. Which of them exist at
+# the moment we read the DOM is a race, so DOM scraping gives a different set on
+# every launch. The server-rendered __NEXT_DATA__ holds ONLY the real result page
+# (plus one hidden sentinel item) and the site's own pagination, so it is
+# deterministic. Confirmed against a saved real results page (2026-11):
+#   props.pageProps.data.searchAds.items[]      9 items = 8 real + 1 sentinel
+#   props.pageProps.data.searchAds.pagination   {itemsPerPage, totalItems,
+#                                                totalPages, currentPage}
+# Item "href" is "[lang]/ad/<slug>" (→ /pl/oferta/<slug>); the sentinel is
+# "hpr/[lang]/ad/…", id >= 9_000_000_000, dateCreated 1999-02-29.
+_SENTINEL_MIN_ID = 9_000_000_000
+
+
+def _next_data_search_ads(data) -> Optional[dict]:
+    try:
+        sa = data["props"]["pageProps"]["data"]["searchAds"]
+        return sa if isinstance(sa.get("items"), list) else None
+    except (KeyError, TypeError, AttributeError):
+        return None
+
+
+def _is_sentinel_item(item: dict) -> bool:
+    href = str(item.get("href") or "")
+    try:
+        big_id = int(item.get("id") or 0) >= _SENTINEL_MIN_ID
+    except (TypeError, ValueError):
+        big_id = False
+    return (
+        href.startswith("hpr/") or href.startswith("/hpr/")
+        or big_id
+        or str(item.get("dateCreated") or "").startswith("1999-")
+    )
+
+
+def _item_url(item: dict, base: str) -> str:
+    href = str(item.get("href") or "").lstrip("/")
+    if not href:
+        return ""
+    path = href.replace("[lang]", "pl").replace("/ad/", "/oferta/", 1)
+    return f"{base}/{path}"
+
+
+def _filter_bounds(filter_url: str) -> dict[str, Optional[float]]:
+    q = parse_qs(urlparse(filter_url).query)
+    def _num(key: str) -> Optional[float]:
+        try:
+            return float(q[key][0])
+        except (KeyError, IndexError, ValueError):
+            return None
+    return {k: _num(k) for k in ("priceMin", "priceMax", "areaMin", "areaMax")}
+
+
+def _outside_filter(item: dict, b: dict) -> Optional[str]:
+    """Reason string if the item clearly violates the URL's price/area bounds."""
+    price = (item.get("totalPrice") or {}).get("value")
+    if isinstance(price, (int, float)) and not item.get("hidePrice"):
+        if b["priceMin"] is not None and price < b["priceMin"]:
+            return f"price {price} < {b['priceMin']:.0f}"
+        if b["priceMax"] is not None and price > b["priceMax"]:
+            return f"price {price} > {b['priceMax']:.0f}"
+    area = item.get("areaInSquareMeters")
+    if isinstance(area, (int, float)):
+        if b["areaMin"] is not None and area < b["areaMin"]:
+            return f"area {area} < {b['areaMin']:.0f}"
+        if b["areaMax"] is not None and area > b["areaMax"]:
+            return f"area {area} > {b['areaMax']:.0f}"
+    return None
+
+
+def _otodom_links_from_next_data(
+    data, base: str, filter_url: str,
+) -> Optional[tuple[list[str], dict]]:
+    """
+    Pure: (hrefs of genuine results in site order, pagination dict) from a parsed
+    __NEXT_DATA__, or None when the expected structure isn't there (markup
+    changed) so the caller can fall back to DOM scraping.
+    """
+    sa = _next_data_search_ads(data)
+    if sa is None:
+        return None
+    bounds = _filter_bounds(filter_url)
+    urls: list[str] = []
+    dropped_sentinel = dropped_bounds = 0
+    for item in sa["items"]:
+        if not isinstance(item, dict):
+            continue
+        if _is_sentinel_item(item):
+            dropped_sentinel += 1
+            continue
+        why = _outside_filter(item, bounds)
+        if why:
+            dropped_bounds += 1
+            logger.warning("[scraper] Otodom item %s outside the filter (%s) — dropped",
+                           item.get("id"), why)
+            continue
+        url = _item_url(item, base)
+        if url:
+            urls.append(url)
+    if dropped_sentinel or dropped_bounds:
+        logger.info("[scraper] __NEXT_DATA__: dropped %d sentinel/promoted, %d out-of-filter",
+                    dropped_sentinel, dropped_bounds)
+    return urls, dict(sa.get("pagination") or {})
+
+
+async def _read_otodom_next_data(page, base: str, filter_url: str):
+    """Browser wrapper around _otodom_links_from_next_data; None on any failure."""
+    try:
+        raw = await page.evaluate(
+            "() => { const e = document.getElementById('__NEXT_DATA__');"
+            " return e ? e.textContent : null; }")
+        if not raw:
+            return None
+        import json
+        return _otodom_links_from_next_data(json.loads(raw), base, filter_url)
+    except Exception as exc:
+        logger.warning("[scraper] could not read Otodom __NEXT_DATA__: %s", exc)
+        return None
+
+
 async def _diagnose_listing_page(page, url: str, new_count: int) -> Optional[str]:
     """
     Called for the FIRST listing page only, after counting the ad cards
@@ -1222,9 +1346,20 @@ async def _collect_all_links_once(filter_url: str) -> tuple[list[str], str]:
             prev_count = len(links)
             base = _origin(page.url)
             site = _site(current)
+            nd_pagination: Optional[dict] = None
             try:
                 raw_hrefs = None
                 if site == "otodom":
+                    # Preferred: the server-rendered __NEXT_DATA__ — immune to the
+                    # ads Otodom injects client-side after load (see above).
+                    nd = await _read_otodom_next_data(page, base, current)
+                    if nd is not None:
+                        raw_hrefs, nd_pagination = nd
+                    else:
+                        logger.warning(
+                            "[scraper] Otodom __NEXT_DATA__ results not found "
+                            "(markup changed?) — falling back to the DOM: %s", current)
+                if raw_hrefs is None and site == "otodom":
                     # Scoped to the organic results container, one link per
                     # visible card — see _collect_otodom_hrefs for why the
                     # generic selectors over-collect on Otodom.
@@ -1255,7 +1390,9 @@ async def _collect_all_links_once(filter_url: str) -> tuple[list[str], str]:
                 logger.info("[scraper] page %d: skipped %d promoted (/hpr/) link(s)",
                             page_n, skipped_promoted)
             if site == "otodom":
-                total_results = await _read_otodom_total(page) or total_results
+                nd_total = nd_pagination.get("totalItems") if nd_pagination else None
+                total_results = (nd_total if isinstance(nd_total, int) else None) \
+                    or await _read_otodom_total(page) or total_results
 
             new_count = len(links) - prev_count
             logger.info("[scraper] page %d: +%d links (total %d)", page_n, new_count, len(links))
@@ -1274,6 +1411,15 @@ async def _collect_all_links_once(filter_url: str) -> tuple[list[str], str]:
                         # suggestions) don't count — discard them.
                         links = []
                         seen.clear()
+                    break
+
+            # Stop condition: Otodom's own pagination says this is the last page.
+            # Never request a page past totalPages — Otodom answers those with
+            # filler (nearby / promoted ads) that is not part of the search.
+            if nd_pagination:
+                cur, tot = nd_pagination.get("currentPage"), nd_pagination.get("totalPages")
+                if isinstance(cur, int) and isinstance(tot, int) and cur >= tot:
+                    logger.info("[scraper] Otodom page %d/%d is the last page — done", cur, tot)
                     break
 
             # Stop condition: Otodom told us how many results this search has

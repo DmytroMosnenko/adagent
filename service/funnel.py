@@ -35,6 +35,7 @@ logger = get_logger(__name__)
 # Funnel order — also the row order of the report.
 STEPS: tuple[str, ...] = (
     "landing",
+    "how_open",
     "demo_open",
     "demo_pick",
     "demo_cta_click",
@@ -447,6 +448,7 @@ def aggregate(rows: Iterable[Any]) -> dict:
 
 _STEP_HELP = {
     "landing":             "page loaded (JS ran, not a bot)",
+    "how_open":            "opened \"How it works\" (Show details)",
     "demo_open":           "demo block scrolled into view",
     "demo_pick":           "clicked an example",
     "demo_cta_click":      "clicked CTA after the demo",

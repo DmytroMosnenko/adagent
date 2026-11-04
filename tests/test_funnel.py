@@ -206,3 +206,14 @@ def test_render_text_and_html():
     assert "1 (33%)" in text            # 1 of 3 landing sessions opened the demo
     html = funnel.render_html(a, "<b>x</b>")
     assert "&lt;b&gt;x&lt;/b&gt;" in html and "<table" in html and "analyze_submit" in html
+
+
+def test_how_open_is_an_accepted_client_event_and_shows_in_the_report():
+    assert "how_open" in funnel.CLIENT_EVENTS and funnel.STEPS.index("how_open") == funnel.STEPS.index("landing") + 1
+    e = funnel.parse_client_event(_body(event="how_open"))
+    assert e and e["event"] == "how_open"
+    a = funnel.aggregate([_row("s1", "landing", True), _row("s1", "how_open", True), _row("s1", "how_open", True),
+                          _row("s2", "landing", True)])
+    assert a["columns"]["All"]["how_open"] == {"sessions": 1, "events": 2}          # 1 visitor, opened twice
+    text = funnel.render_text(a, "x")
+    assert "how_open" in text and "1 (50%)" in text                                  # 1 of 2 landing sessions

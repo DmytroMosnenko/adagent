@@ -121,11 +121,14 @@
     h.value = sid;
   })();
 
-  // ── clicks: sample report ───────────────────────────────────────────────────
+  // ── clicks: sample report, "How it works" opened ────────────────────────────
   document.addEventListener("click", safe(function (e) {
     var el = e.target && e.target.closest ? e.target.closest("[data-funnel]") : null;
     if (!el) return;
-    if (el.getAttribute("data-funnel") === "sample") send("sample_report_click");
+    var what = el.getAttribute("data-funnel");
+    if (what === "sample") send("sample_report_click");
+    // capture phase: runs before the button's own handler, so "false" here means this click opens it
+    else if (what === "how" && el.getAttribute("aria-expanded") === "false") send("how_open");
   }), true);
 
   // ── URL field ───────────────────────────────────────────────────────────────

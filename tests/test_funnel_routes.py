@@ -219,6 +219,7 @@ async def test_landing_has_collapsed_how_it_works_and_single_example(client):
     assert pl.count('class="report-shot"') == 1 and 'id="example"' in pl                                  # the one example
     assert 'id="preset-auto"' in pl and "kindOf(" in pl                                                   # preset auto-select
     assert 'action="/analyze"' in pl and 'name="filter_url"' in pl                                        # form untouched
+    assert 'data-funnel="how"' in pl                                                                      # tracked toggle
     assert "/static/funnel.js" in pl and "Pokaż szczegóły" in pl and "Nie masz jeszcze linku?" in pl
     en = (await client.get("/en")).text
     assert "Show details" in en and "No link yet?" in en

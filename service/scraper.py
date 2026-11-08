@@ -23,7 +23,7 @@ from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
 from .config import settings
 from .broker_client import BrokerGateClient
-from . import url_guard
+from . import url_guard, result_scope
 from .logger import get_logger
 
 logger = get_logger(__name__)
@@ -273,15 +273,17 @@ def _is_ad(url: str) -> bool:
     return any(p in url for p in _AD_PATTERNS)
 
 
-# Otodom serves paid "highlighted promoted" slots under a /hpr/ path prefix
-# (e.g. https://www.otodom.pl/hpr/pl/oferta/...). They are injected into the
-# listing markup regardless of the user's filter — so they can be a 4-room,
-# 136 m² flat on a "2 rooms, up to 250k" search — and they are not real
-# matches. Confirmed against a saved real Otodom results page (2026-10).
-_PROMOTED_URL_RE = re.compile(r"^https?://[^/]*otodom\.pl/hpr/", re.IGNORECASE)
 def _is_promoted_url(url: str) -> bool:
     """True for sponsored slots that are not genuine filter matches."""
-    return bool(_PROMOTED_URL_RE.match(url))
+    return result_scope.extra_result_reason(url) == "promoted"
+
+
+def _page_number(url: str) -> int:
+    """The ?page=N of a listing URL (1 when absent or malformed)."""
+    try:
+        return max(1, int(parse_qs(urlparse(url).query).get("page", ["1"])[0]))
+    except (TypeError, ValueError):
+        return 1
 
 
 def _valid_image_url(raw: Optional[str], base: str) -> str:
@@ -794,6 +796,13 @@ async def _collect_listing_hrefs(page, selectors: tuple) -> list[str]:
     container (a normal, non-widened result set, or an Otomoto/Otodom page
     that doesn't use this OLX-specific container at all) has no boundary,
     so every matching href is returned as before.
+
+    This is only ONE layer. Past the last page of real matches OLX serves
+    pages holding just the extension list — a single grid, so no boundary
+    exists — and the caller therefore also (a) drops links that
+    result_scope.extra_result_reason() flags (it must see the raw href, not the
+    query-stripped one) and (b) stops at the filter's own last page
+    (_read_olx_listing_meta).
     """
     return await page.evaluate(
         """(selectors) => {
@@ -1014,6 +1023,36 @@ async def _read_otodom_next_data(page, base: str, filter_url: str):
     except Exception as exc:
         logger.warning("[scraper] could not read Otodom __NEXT_DATA__: %s", exc)
         return None
+
+
+async def _read_olx_listing_meta(page) -> Optional["result_scope.ListingMeta"]:
+    """
+    How many real matches the filter has and how many pages they span, read
+    from the server-rendered listing state (window.__PRERENDERED_STATE__,
+    listing.listing — the filter's own results, NOT its expansionListing) with
+    the visible "Znaleźliśmy N ogłoszeń" counter as a fallback. None when
+    neither is present (not OLX / markup changed) so callers keep the old
+    behaviour.
+    """
+    try:
+        probe = await page.evaluate(
+            """() => {
+                const out = {total: null, totalPages: null, countText: null};
+                try {
+                    let st = window.__PRERENDERED_STATE__;
+                    if (typeof st === 'string') st = JSON.parse(st);
+                    const l = st && st.listing && st.listing.listing;
+                    if (l) { out.total = l.totalElements; out.totalPages = l.totalPages; }
+                } catch (e) {}
+                const el = document.querySelector('[data-testid="total-count"]');
+                if (el) out.countText = el.textContent;
+                return out;
+            }"""
+        )
+    except Exception as exc:
+        logger.debug("[scraper] could not read OLX listing meta: %s", exc)
+        return None
+    return result_scope.listing_meta(probe)
 
 
 async def _diagnose_listing_page(page, url: str, new_count: int) -> Optional[str]:
@@ -1291,7 +1330,7 @@ async def _collect_all_links_once(filter_url: str) -> tuple[list[str], str]:
     seen: set[str] = set()
     links: list[str] = []
     diagnosis = ""
-    total_results: Optional[int] = None   # site-reported result count (Otodom)
+    total_results: Optional[int] = None   # site-reported result count (Otodom, OLX)
 
     # Checked out from the shared pool — this crawl already holds a
     # scrape_gate slot (see collect_all_links), so a context is guaranteed
@@ -1375,24 +1414,41 @@ async def _collect_all_links_once(filter_url: str) -> tuple[list[str], str]:
             except Exception as exc:
                 logger.warning("[scraper] listing href collection failed: %s", exc)
                 raw_hrefs = []
-            skipped_promoted = 0
+            # Links that are not matches for the filter (sponsored slots, OLX
+            # "extended search" padding). Judged on the RAW href: _clean()
+            # drops the query string that carries OLX's reason= marker.
+            skipped_extra: dict[str, str] = {}
             for raw in raw_hrefs:
-                full = _clean(_absolute(raw, base))
+                absolute = _absolute(raw, base)
+                full = _clean(absolute)
                 if not full or not _is_ad(full) or not url_guard.is_allowed_url(full):
                     continue
-                if _is_promoted_url(full):
-                    skipped_promoted += 1
+                why = result_scope.extra_result_reason(absolute)
+                if why:
+                    skipped_extra[full] = why
                     continue
                 if full not in seen:
                     seen.add(full)
                     links.append(full)
-            if skipped_promoted:
-                logger.info("[scraper] page %d: skipped %d promoted (/hpr/) link(s)",
-                            page_n, skipped_promoted)
+            if skipped_extra:
+                by_reason: dict[str, int] = {}
+                for why in skipped_extra.values():
+                    by_reason[why] = by_reason.get(why, 0) + 1
+                logger.info("[scraper] page %d: skipped %d out-of-filter link(s): %s",
+                            page_n, len(skipped_extra), by_reason)
             if site == "otodom":
                 nd_total = nd_pagination.get("totalItems") if nd_pagination else None
                 total_results = (nd_total if isinstance(nd_total, int) else None) \
                     or await _read_otodom_total(page) or total_results
+
+            # OLX: the filter's own total / page count. OLX appends its
+            # extension list to the paginator, so "is there a next page?" is
+            # NOT the same as "are there more matches".
+            olx_meta = None
+            if site == "olx":
+                olx_meta = await _read_olx_listing_meta(page)
+                if olx_meta and olx_meta.exact and olx_meta.total:
+                    total_results = olx_meta.total
 
             new_count = len(links) - prev_count
             logger.info("[scraper] page %d: +%d links (total %d)", page_n, new_count, len(links))
@@ -1421,6 +1477,14 @@ async def _collect_all_links_once(filter_url: str) -> tuple[list[str], str]:
                 if isinstance(cur, int) and isinstance(tot, int) and cur >= tot:
                     logger.info("[scraper] Otodom page %d/%d is the last page — done", cur, tot)
                     break
+
+            # Stop condition: OLX's own last page of real matches. Pages beyond
+            # it only hold the extension list (wider area / nationwide delivery).
+            if olx_meta and result_scope.is_last_page(_page_number(current), olx_meta):
+                logger.info("[scraper] OLX page %d/%d is the last page of the "
+                            "filter's results — done",
+                            _page_number(current), olx_meta.total_pages)
+                break
 
             # Stop condition: Otodom told us how many results this search has
             # ("1-36 ogłoszeń z 67"). Once we have that many we're done —
@@ -1457,8 +1521,12 @@ async def _collect_all_links_once(filter_url: str) -> tuple[list[str], str]:
                             # Some sites use <button> with JS, try clicking
                             logger.debug("[scraper] next-page button found (no href): %s", sel)
                         else:
-                            candidate = _clean(_absolute(href, base))
-                            if candidate and candidate != current:
+                            # NOT _clean(): that strips the query string, and a
+                            # pagination href is nothing BUT query (?page=N plus
+                            # every filter) — stripping it jumps to the bare,
+                            # unfiltered category.
+                            candidate = _absolute(href, base).split("#")[0]
+                            if candidate and candidate.rstrip("/") != current.rstrip("/"):
                                 nxt = candidate
                                 logger.debug("[scraper] next page via button: %s", nxt)
                                 break

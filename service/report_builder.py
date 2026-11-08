@@ -11,8 +11,12 @@ from .i18n import translator
 from .scraper import _resize_image_url, _IMG_SIZE_THUMB, _IMG_SIZE_MEDIUM
 logger = get_logger(__name__)
 
-_REF_PAIR_RE = re.compile(r"\{\{ref:([^}]*)\}\}(.*?)\{\{/ref\}\}", re.S)
-_REF_STRAY_RE = re.compile(r"\{\{/?ref[^}]*\}\}")
+# Tolerates the whitespace / casing / "#" slips models make with the marker
+# ("{{ ref: 12 }}", "{{Ref:#12}}", "{{ /ref }}") — a marker that doesn't parse
+# would otherwise leak into the text the buyer reads and link nothing.
+_REF_PAIR_RE = re.compile(
+    r"\{\{\s*ref\s*[:=]\s*([^}]*?)\s*\}\}(.*?)\{\{\s*/\s*ref\s*\}\}", re.S | re.I)
+_REF_STRAY_RE = re.compile(r"\{\{\s*/?\s*ref[^}]*\}\}", re.I)
 
 _VERDICT_LABELS = {
     "worth_viewing": "Worth Viewing",
@@ -48,13 +52,26 @@ def _site_label(url: str) -> str:
     return "OLX"
 
 
+# Spec keys only the phones preset's JSON schema produces (phones_ad.txt).
+# "brand"/"model" alone aren't enough — vehicles also fill "model".
+_PHONE_SPEC_KEYS = ("brand", "storage_gb", "ram_gb", "battery_health_pct",
+                    "release_year", "screen", "sim_lock")
+
+
+def _is_phone(specs: dict) -> bool:
+    return any(specs.get(k) not in (None, "") for k in _PHONE_SPEC_KEYS)
+
+
 def _detect_category(specs: dict) -> str:
     """
     Which vertical this ad belongs to, based on which spec fields the AI
     populated. Used by the template to pick the right deep_dive labels/icons
-    (vehicle vs real estate) without needing a separate field in the JSON
-    schema the AI has to fill in — specs already disambiguate this reliably.
+    (phone vs vehicle vs real estate) without needing a separate field in the
+    JSON schema the AI has to fill in — specs already disambiguate this reliably.
+    Phones are checked first because they share "model" with vehicles.
     """
+    if _is_phone(specs):
+        return "phone"
     if specs.get("property_type") or specs.get("area_m2") or specs.get("rooms"):
         return "realestate"
     if specs.get("make") or specs.get("model") or specs.get("mileage_km"):
@@ -62,7 +79,42 @@ def _detect_category(specs: dict) -> str:
     return "other"
 
 
+def _with_unit(val, unit: str) -> str:
+    """'128' -> '128 GB'; leaves a value that already carries the unit alone."""
+    text = str(val).strip()
+    return text if unit.lower() in text.lower() else f"{text} {unit}"
+
+
+def _build_phone_spec_items(specs: dict) -> list[dict]:
+    def add(label: str, val) -> Optional[dict]:
+        if val is None or val == "":
+            return None
+        return {"label": label, "value": str(val)}
+
+    def human(val) -> Optional[str]:
+        return str(val).replace("_", " ").capitalize() if val else None
+
+    battery = specs.get("battery_health_pct")
+    candidates = [
+        add("Brand",     specs.get("brand")),
+        add("Model",     specs.get("model")),
+        add("Released",  specs.get("release_year")),
+        add("Storage",   _with_unit(specs["storage_gb"], "GB") if specs.get("storage_gb") else None),
+        add("RAM",       _with_unit(specs["ram_gb"], "GB") if specs.get("ram_gb") else None),
+        add("Screen",    specs.get("screen")),
+        add("Battery health", _with_unit(battery, "%") if battery not in (None, "") else None),
+        add("Color",     specs.get("color")),
+        add("Condition", human(specs.get("condition"))),
+        add("Warranty",  specs.get("warranty")),
+        add("SIM lock",  human(specs.get("sim_lock"))),
+    ]
+    return [c for c in candidates if c]
+
+
 def _build_spec_items(specs: dict) -> list[dict]:
+    if _is_phone(specs):
+        return _build_phone_spec_items(specs)
+
     def add(label: str, val) -> Optional[dict]:
         if val is None or val == "":
             return None
@@ -146,7 +198,46 @@ def _build_recommended_links(recommended_ads: list, ads: list[dict], limit: int 
     return links
 
 
-def _title_candidates(ad: dict, ambiguous_districts: set[str]) -> list[str]:
+# Units the report language may spell differently from the ad ("128 GB" vs "128 ГБ").
+_UNIT_ALIASES = {"гб": "gb", "мб": "mb", "тб": "tb", "gb": "gb", "mb": "mb", "tb": "tb"}
+_TOKEN_EDGE_RE = re.compile(r"^[^\w/+]+|[^\w/+]+$")
+
+
+def _canon_token(token: str) -> str:
+    t = _TOKEN_EDGE_RE.sub("", token.lower())
+    return _UNIT_ALIASES.get(t, t)
+
+
+def _ad_tokens(ad: dict) -> set[str]:
+    """Words that belong to this ad's name: title, make, model, spec values."""
+    parts = [ad.get("title", ""), ad.get("make", ""), ad.get("model", "")]
+    parts += [str(i.get("value", "")) for i in ad.get("spec_items") or [] if isinstance(i, dict)]
+    return {c for c in (_canon_token(w) for w in " ".join(parts).split()) if c}
+
+
+_NEXT_WORD_RE = re.compile(r"[ \t]+(\S+)")
+
+
+def _extend_over_ad_tokens(text: str, end: int, tokens: set[str], limit: int) -> int:
+    """
+    A mention such as "Realme GT Neo 3T 8/128 ГБ" is often matched or wrapped
+    only partway ("Realme GT"), leaving the rest as dead text next to a link.
+    Extend `end` rightwards over following words that are part of the same ad's
+    name, stopping at the first word that isn't (or at `limit`, the start of
+    the next claimed span / end of text).
+    """
+    while True:
+        m = _NEXT_WORD_RE.match(text, end)
+        if not m or m.end() > limit:
+            return end
+        word = m.group(1)
+        if "<" in word or "{{" in word or _canon_token(word) not in tokens:
+            return end
+        end = m.end()
+
+
+def _title_candidates(ad: dict, ambiguous_districts: set[str],
+                      ambiguous_models: Optional[set[str]] = None) -> list[str]:
     """
     Candidate substrings to look for in the recommendation text when an ad has
     no explicit {label, url} entry from the AI — most specific first.
@@ -170,6 +261,13 @@ def _title_candidates(ad: dict, ambiguous_districts: set[str]) -> list[str]:
         if first_word and first_word != model:
             candidates.append(f"{make} {first_word}")
     elif model:
+        candidates.append(model)
+
+    # Prose rarely repeats the brand when the model name already says it
+    # ("iPhone 11", not "Apple iPhone 11"). A bare model is only a safe guess
+    # when no other ad in the batch shares it (caller passes the shared ones).
+    if (ambiguous_models is not None and make and model
+            and model not in ambiguous_models and model not in candidates):
         candidates.append(model)
 
     district = ad.get("district", "")
@@ -241,6 +339,11 @@ def _linkify_recommendation(recommendation: str, recommended_links: list[dict], 
             linked_anchors.add(ad_anchor)
         return True
 
+    def room_after(end: int) -> int:
+        """How far a span ending at `end` may grow before it hits another span."""
+        starts = [s for s, _e, _r in spans if s >= end]
+        return min(starts) if starts else len(text)
+
     def claim_label(label: str, ad_anchor: str, lb_anchor: str, rank: int) -> bool:
         esc_label = str(escape(label))
         if not esc_label:
@@ -248,34 +351,51 @@ def _linkify_recommendation(recommendation: str, recommended_links: list[dict], 
         idx = text.find(esc_label)
         if idx == -1:
             return False
+        end = idx + len(esc_label)
+        ad = ads[rank - 1] if 1 <= rank <= len(ads) else None
+        if ad is not None:
+            end = _extend_over_ad_tokens(text, end, _ad_tokens(ad), room_after(end))
         anchor = (
             f'<a href="#{ad_anchor}" class="rec-inline-link" '
             f'data-lb-id="{lb_anchor}" title="Jump to ad #{rank}">'
-            f'{esc_label}<span class="rec-inline-arrow"> ↓</span></a>'
+            f'{text[idx:end]}<span class="rec-inline-arrow"> ↓</span></a>'
         )
-        return claim_span(idx, idx + len(esc_label), anchor, ad_anchor)
+        return claim_span(idx, end, anchor, ad_anchor)
 
     # 1. {{ref:N}}...{{/ref}} pairs. The wrapped text is kept either way (as
     # a link when N resolves, as plain unwrapped text when it doesn't) — only
     # the marker tags themselves are ever removed.
     by_url = {_norm_url(ad["url"]): (i, ad) for i, ad in enumerate(ads)}
+    ref_starts = [m.start() for m in _REF_PAIR_RE.finditer(text)]
+
+    def room_after_ref(end: int) -> int:
+        later = [s for s in ref_starts if s >= end]
+        return min(later) if later else len(text)
+
     for m in _REF_PAIR_RE.finditer(text):
-        n_str, inner = m.group(1), _REF_STRAY_RE.sub("", m.group(2))
+        n_str, inner = m.group(1).strip().lstrip("#").strip(), _REF_STRAY_RE.sub("", m.group(2))
         ad_anchor = None
+        span_end = m.end()
         replacement = inner  # default: unwrap, keep the text, drop the tags
         if n_str.isdigit():
             n = int(n_str)
             if 1 <= n <= len(results):
                 match = by_url.get(_norm_url(results[n - 1].get("url", "")))
                 if match:
-                    idx, _ad = match
+                    idx, ad = match
                     ad_anchor = f"ad-{idx}"
+                    # The model sometimes wraps only the brand ("Realme GT") and
+                    # leaves the rest of the same name outside the tags: pull
+                    # those words into the link.
+                    span_end = _extend_over_ad_tokens(
+                        text, m.end(), _ad_tokens(ad), room_after_ref(m.end()))
+                    tail = text[m.end():span_end]
                     replacement = (
                         f'<a href="#{ad_anchor}" class="rec-inline-link" '
                         f'data-lb-id="lb-{idx}" title="Jump to ad #{idx + 1}">'
-                        f'{inner}<span class="rec-inline-arrow"> ↓</span></a>'
+                        f'{inner}{tail}<span class="rec-inline-arrow"> ↓</span></a>'
                     )
-        claim_span(m.start(), m.end(), replacement, ad_anchor)
+        claim_span(m.start(), span_end, replacement, ad_anchor)
 
     # 2. recommended_ads label matches.
     for link in sorted(recommended_links, key=lambda l: -len(l["label"])):
@@ -292,12 +412,17 @@ def _linkify_recommendation(recommendation: str, recommended_links: list[dict], 
             if d:
                 district_counts[d] = district_counts.get(d, 0) + 1
     ambiguous_districts = {d for d, n in district_counts.items() if n > 1}
+    model_counts: dict[str, int] = {}
+    for ad in ads:
+        if ad.get("model"):
+            model_counts[ad["model"]] = model_counts.get(ad["model"], 0) + 1
+    ambiguous_models = {m for m, n in model_counts.items() if n > 1}
 
     for idx, ad in enumerate(ads):
         ad_anchor = f"ad-{idx}"
         if ad_anchor in linked_anchors:
             continue
-        for candidate in _title_candidates(ad, ambiguous_districts):
+        for candidate in _title_candidates(ad, ambiguous_districts, ambiguous_models):
             if claim_label(candidate, ad_anchor, f"lb-{idx}", idx + 1):
                 break
 
@@ -363,8 +488,8 @@ def _prepare_ad(result: dict) -> dict:
     title = (raw.get("title") or "").strip()
     if not title:
         # Fallback only when scraper found nothing
-        if specs.get("make") or specs.get("model"):
-            parts = [specs.get("make", ""), specs.get("model", "")]
+        if specs.get("make") or specs.get("brand") or specs.get("model"):
+            parts = [specs.get("make") or specs.get("brand") or "", specs.get("model") or ""]
             if specs.get("year"):
                 parts.append(str(specs["year"]))
             title = " ".join(x for x in parts if x)
@@ -412,7 +537,7 @@ def _prepare_ad(result: dict) -> dict:
         "image_url":              image_url,
         "image_thumb":            _resize_image_url(image_url, _IMG_SIZE_THUMB),
         "image_medium":           _resize_image_url(image_url, _IMG_SIZE_MEDIUM),
-        "make":                   (specs.get("make") or "").strip(),
+        "make":                   (specs.get("make") or specs.get("brand") or "").strip(),
         "model":                  (specs.get("model") or "").strip(),
         "district":               (specs.get("district") or "").strip(),
         "rating":                 rating,

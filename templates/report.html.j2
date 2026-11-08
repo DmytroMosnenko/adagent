@@ -419,12 +419,12 @@ details.raw.deep-dive>summary:hover{background:#e1ecf9;color:var(--navy)}
     </div>
     {% endif %}
     {% if ad.deep_dive.general_specs or ad.deep_dive.mentioned_fixes or ad.deep_dive.known_weak_points or ad.deep_dive.real_world_consumption %}
-    {% set dd_icon = '🏘️' if ad.category == 'realestate' else '🔧' %}
-    {% set dd_title = t('Full location & building analysis') if ad.category == 'realestate' else t('Full model & reliability analysis') %}
-    {% set dd_l1 = t('Location profile') if ad.category == 'realestate' else t('General specs (official)') %}
-    {% set dd_l2 = t('Renovations / upgrades / included items mentioned') if ad.category == 'realestate' else t('All mentioned fixes / maintenance') %}
-    {% set dd_l3 = t('Known issues for this building type / era') if ad.category == 'realestate' else t('Known weak points for this model') %}
-    {% set dd_l4 = t('Running costs & market liquidity') if ad.category == 'realestate' else t('Real-world fuel consumption') %}
+    {% set dd_icon = '🏘️' if ad.category == 'realestate' else ('📱' if ad.category == 'phone' else '🔧') %}
+    {% set dd_title = t('Full location & building analysis') if ad.category == 'realestate' else (t('Full device & reliability analysis') if ad.category == 'phone' else t('Full model & reliability analysis')) %}
+    {% set dd_l1 = t('Location profile') if ad.category == 'realestate' else (t('Device specs (official)') if ad.category == 'phone' else t('General specs (official)')) %}
+    {% set dd_l2 = t('Renovations / upgrades / included items mentioned') if ad.category == 'realestate' else (t('Repairs / replaced parts / accessories mentioned') if ad.category == 'phone' else t('All mentioned fixes / maintenance')) %}
+    {% set dd_l3 = t('Known issues for this building type / era') if ad.category == 'realestate' else (t('Known issues for this model') if ad.category == 'phone' else t('Known weak points for this model')) %}
+    {% set dd_l4 = t('Running costs & market liquidity') if ad.category == 'realestate' else (t('Battery life & resale value') if ad.category == 'phone' else t('Real-world fuel consumption')) %}
     <details class="raw deep-dive" open>
       <summary>{{ dd_icon }} {{ dd_title }}</summary>
       <div class="raw-body">

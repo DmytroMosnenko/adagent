@@ -7,7 +7,7 @@ from . import url_guard
 
 class AnalyzeRequest(BaseModel):
     filter_url: str
-    prompt_preset: Optional[str] = None        # "vehicles" | "realestate" | None
+    prompt_preset: Optional[str] = None        # "vehicles" | "realestate" | "phones" | None
     custom_ad_prompt: Optional[str] = None
     custom_summary_prompt: Optional[str] = None
 
@@ -27,8 +27,8 @@ class AnalyzeRequest(BaseModel):
     @field_validator("prompt_preset")
     @classmethod
     def valid_preset(cls, v: Optional[str]) -> Optional[str]:
-        if v is not None and v not in ("vehicles", "realestate"):
-            raise ValueError("preset must be 'vehicles' or 'realestate'")
+        if v is not None and v not in ("vehicles", "realestate", "phones"):
+            raise ValueError("preset must be 'vehicles', 'realestate' or 'phones'")
         return v
 
 

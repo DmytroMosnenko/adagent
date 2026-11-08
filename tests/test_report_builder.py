@@ -1,7 +1,7 @@
 """Tests for service/report_builder.py — spec building, ad prep, HTML rendering."""
 import pytest
 from service.report_builder import (
-    _parse_raw_parameters,
+    _parse_raw_parameters, _detect_category,
     _build_spec_items, _prepare_ad, _fallback_analysis, build_html_report,
 )
 
@@ -42,6 +42,34 @@ class TestBuildSpecItems:
         assert "Area" in labels
         assert "Rooms" in labels
         assert "Floor" in labels
+
+    def test_phone_specs(self):
+        specs = {
+            "brand": "Apple", "model": "iPhone 13", "release_year": 2021,
+            "storage_gb": 128, "ram_gb": 4, "screen": "6.1\" OLED",
+            "battery_health_pct": 87, "color": "Blue", "condition": "like_new",
+            "warranty": "6 months", "sim_lock": "unlocked",
+        }
+        items = {i["label"]: i["value"] for i in _build_spec_items(specs)}
+        assert items["Brand"] == "Apple"
+        assert items["Model"] == "iPhone 13"
+        assert items["Storage"] == "128 GB"
+        assert items["RAM"] == "4 GB"
+        assert items["Battery health"] == "87 %"
+        assert items["Condition"] == "Like new"
+        assert items["SIM lock"] == "Unlocked"
+        assert "Make" not in items and "Mileage" not in items
+
+    def test_phone_unit_not_doubled(self):
+        items = {i["label"]: i["value"] for i in _build_spec_items(
+            {"brand": "Samsung", "storage_gb": "256 GB", "battery_health_pct": "90%"})}
+        assert items["Storage"] == "256 GB"
+        assert items["Battery health"] == "90%"
+
+    def test_detect_category(self):
+        assert _detect_category({"brand": "Apple", "model": "iPhone 13"}) == "phone"
+        assert _detect_category({"model": "Golf", "mileage_km": 1000}) == "vehicle"
+        assert _detect_category({"property_type": "apartment"}) == "realestate"
 
     def test_area_formatted_with_m2(self):
         items = _build_spec_items({"area_m2": 52.5})
@@ -170,6 +198,42 @@ class TestPrepareAd:
         assert ad["raw"]["description"] == "Nice car."
         assert ad["raw"]["location"] == "Kraków"
         assert ad["raw"]["parameters"] == "Rok: 2015"
+
+
+class TestPhonePreset:
+
+    def _analysis(self):
+        import json
+        return json.dumps({
+            "rating": 7.5, "verdict": "worth_viewing", "verdict_note": "Good phone.",
+            "summary": "Solid.", "specs": {"brand": "Apple", "model": "iPhone 13",
+                                           "storage_gb": 128, "battery_health_pct": 88},
+            "asking_price": "1 800 zł", "price_assessment": "fair",
+            "red_flags": [], "positives": ["Battery 88%"],
+            "deep_dive": {"general_specs": "A15 Bionic.", "mentioned_fixes": ["Original box"],
+                          "known_weak_points": "Battery wear.", "real_world_consumption": "~8h SOT."},
+        })
+
+    def test_prepare_ad_category_and_make(self):
+        url = "https://www.olx.pl/d/oferta/iphone-13-ID1.html"
+        ad = _prepare_ad({"url": url, "data": {"url": url}, "analysis": self._analysis()})
+        assert ad["category"] == "phone"
+        assert ad["make"] == "Apple"
+        assert ad["title"] == "Apple iPhone 13"
+
+    def test_report_uses_phone_deep_dive_labels(self):
+        url = "https://www.olx.pl/d/oferta/iphone-13-ID1.html"
+        html = build_html_report(
+            results=[{"url": url, "data": {"url": url, "title": "iPhone 13 128GB"},
+                      "analysis": self._analysis()}],
+            summary_text='{"market_summary": "One phone.", "recommendation": "Buy it."}',
+            filter_url="https://www.olx.pl/elektronika/telefony/",
+            report_id="ph1", ads_found=1, is_limited=False,
+            template_dir="templates", template_file="report.html.j2",
+        )
+        assert "Full device &amp; reliability analysis" in html
+        assert "Battery life &amp; resale value" in html
+        assert "Full model &amp; reliability analysis" not in html
 
 
 class TestBuildHtmlReport:

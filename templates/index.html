@@ -324,7 +324,7 @@
   radios.forEach(r => r.addEventListener('change', toggle));
   toggle();
 
-  // Pick the analysis preset from the pasted link (vehicles vs real estate).
+  // Pick the analysis preset from the pasted link (vehicles / real estate / phones).
   // Only runs while the visitor has not chosen a preset by hand, and only selects
   // a preset that exists in this deployment.
   (function () {
@@ -344,6 +344,7 @@
         var seg = u.pathname.toLowerCase().split('/').filter(Boolean).slice(0, 2);   // /d/motoryzacja/… or /motoryzacja/…
         if (seg.indexOf('motoryzacja') !== -1) return 'vehicles';
         if (seg.indexOf('nieruchomosci') !== -1) return 'realestate';
+        if (seg.indexOf('elektronika') !== -1 && u.pathname.toLowerCase().indexOf('/telefony') !== -1) return 'phones';
       }
       return null;
     }

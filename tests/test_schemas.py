@@ -40,6 +40,10 @@ class TestAnalyzeRequest:
         r = AnalyzeRequest(filter_url="https://www.olx.pl/nieruchomosci/", prompt_preset="realestate")
         assert r.prompt_preset == "realestate"
 
+    def test_valid_preset_phones(self):
+        r = AnalyzeRequest(filter_url="https://www.olx.pl/elektronika/telefony/", prompt_preset="phones")
+        assert r.prompt_preset == "phones"
+
     def test_rejects_unknown_preset(self):
         with pytest.raises(ValidationError, match="preset"):
             AnalyzeRequest(filter_url="https://www.olx.pl/", prompt_preset="electronics")

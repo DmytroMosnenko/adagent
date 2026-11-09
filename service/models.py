@@ -177,6 +177,7 @@ class FunnelEvent(Base):
     sid          = Column(String(32), nullable=True)
     event        = Column(String(32), nullable=False)
     has_gclid    = Column(Boolean, nullable=True)
+    has_fbclid   = Column(Boolean, nullable=True)
     device       = Column(String(8), nullable=False, default="other")   # mobile|desktop|other
     ui_lang      = Column(String(4), nullable=True)
     utm_source   = Column(String(64), nullable=True)
@@ -184,7 +185,7 @@ class FunnelEvent(Base):
     ref_host     = Column(String(128), nullable=True)
     url_host     = Column(String(16), nullable=True)
     url_label    = Column(String(48), nullable=True)
-    detail       = Column(String(64), nullable=True)   # example id / invalid reason / report id
+    detail       = Column(String(64), nullable=True)   # example id / invalid reason / report id / "dt<ms>" on url_field_focus
 
     __table_args__ = (
         Index("ix_funnel_created_event", "created_at", "event"),

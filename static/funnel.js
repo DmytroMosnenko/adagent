@@ -1,7 +1,7 @@
 /* AdAgent landing-page funnel tracking — first-party, cookieless, anonymous.
  *
  * What leaves the browser: a random per-tab id (sessionStorage), event name, ui
- * language, a has_gclid boolean (never the gclid value), utm_source/campaign,
+ * language, has_gclid / has_fbclid booleans (never the click-id values), utm_source/campaign,
  * the referrer HOSTNAME, and for pasted links only {host, coarse label}.
  * The full URL a visitor pastes is never sent from here.
  * Sent with sendBeacon (fetch keepalive as fallback) to window.AA_FUNNEL.endpoint.
@@ -52,6 +52,8 @@
   var params = new URLSearchParams(location.search);
   if (params.has("gclid") || params.has("wbraid") || params.has("gbraid")) set("aa_gc", "1");
   else if (get("aa_gc") === null) set("aa_gc", "0");
+  if (params.has("fbclid")) set("aa_fb", "1");
+  else if (get("aa_fb") === null) set("aa_fb", "0");
   ["utm_source", "utm_campaign"].forEach(function (k) {
     var v = params.get(k);
     if (v) set("aa_" + k, v.slice(0, 64));
@@ -87,7 +89,7 @@
   function send(event, extra) {
     try {
       var p = {
-        event: event, sid: sid, gclid: get("aa_gc") === "1", lang: cfg.lang,
+        event: event, sid: sid, gclid: get("aa_gc") === "1", fbclid: get("aa_fb") === "1", lang: cfg.lang,
         utm_source: get("aa_utm_source") || undefined, utm_campaign: get("aa_utm_campaign") || undefined
       };
       for (var k in (extra || {})) p[k] = extra[k];
@@ -108,6 +110,7 @@
       var ref;
       try { ref = document.referrer ? new URL(document.referrer).hostname : undefined; } catch (e) {}
       if (ref === location.hostname) ref = undefined;
+      set("aa_t0", String(Date.now()));                   // landing time, for the focus-latency bot check
       send("landing", { ref: ref });
     });
   })();
@@ -139,7 +142,14 @@
       var l = labelFor(input.value);
       send("url_paste", { host: l.host, label: l.label });
     }
-    input.addEventListener("focus", safe(function () { once("aa_focus_" + location.pathname, function () { send("url_field_focus"); }); }));
+    // detail = "dt<ms since landing>": the report treats a first focus < 2 s after landing as bot-like.
+    // Measured here because DB timestamps have 1 s resolution.
+    input.addEventListener("focus", safe(function () {
+      once("aa_focus_" + location.pathname, function () {
+        var t0 = parseInt(get("aa_t0"), 10), dt = Date.now() - t0;
+        send("url_field_focus", t0 > 0 && dt >= 0 ? { detail: "dt" + Math.min(dt, 3600000) } : undefined);
+      });
+    }));
     input.addEventListener("paste", safe(function () {
       pasted = true; setTimeout(safe(reportPaste), 0);            // value is updated after the event
     }));

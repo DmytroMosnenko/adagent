@@ -106,6 +106,18 @@ async def test_analyze_invalid_url_is_logged_with_reason_and_inherits_ad_source(
 
 
 @pytest.mark.asyncio
+async def test_beacon_stores_fbclid_flag_and_server_events_inherit_it(client, db, funnel_db):
+    await client.post("/api/e", content=_beacon(gclid=False, fbclid=True, utm_source="ig"), headers={"user-agent": UA})
+    await client.post("/analyze", data={"filter_url": "https://www.allegro.pl/oferty/", "prompt_preset": "vehicles",
+                                        "sid": SID}, headers={"user-agent": UA}, follow_redirects=False)
+    rows = await _events(db)
+    landing = [e for e in rows if e.event == "landing"][0]
+    bad = [e for e in rows if e.event == "invalid_url"][0]
+    assert (landing.has_fbclid, landing.utm_source) == (True, "ig")
+    assert (bad.has_fbclid, bad.utm_source, bad.has_gclid) == (True, "ig", False)
+
+
+@pytest.mark.asyncio
 async def test_analyze_no_scheme_reason(client, db, funnel_db):
     await client.post("/analyze", data={"filter_url": "olx.pl/motoryzacja", "prompt_preset": "vehicles"},
                       headers={"user-agent": UA}, follow_redirects=False)
@@ -140,11 +152,13 @@ async def test_analyze_still_works_when_logging_is_broken(client, db, funnel_db)
 
 @pytest.mark.asyncio
 async def test_report_outcome_copies_attribution_from_started(db, funnel_db):
-    await crud.add_funnel_event(db, event="analyze_started", sid=SID, has_gclid=True, device="mobile",
-                                ui_lang="pl", url_host="olx.pl", url_label="motoryzacja:filter", detail="r" * 32)
+    await crud.add_funnel_event(db, event="analyze_started", sid=SID, has_gclid=True, has_fbclid=True,
+                                device="mobile", ui_lang="pl", url_host="olx.pl",
+                                url_label="motoryzacja:filter", detail="r" * 32)
     await funnel.record_report_outcome(funnel_db, "r" * 32, "analyze_done")
     done = [e for e in await _events(db) if e.event == "analyze_done"]
     assert len(done) == 1 and (done[0].sid, done[0].has_gclid, done[0].device) == (SID, True, "mobile")
+    assert done[0].has_fbclid is True
 
 
 @pytest.mark.asyncio

@@ -217,3 +217,125 @@ def test_how_open_is_an_accepted_client_event_and_shows_in_the_report():
     assert a["columns"]["All"]["how_open"] == {"sessions": 1, "events": 2}          # 1 visitor, opened twice
     text = funnel.render_text(a, "x")
     assert "how_open" in text and "1 (50%)" in text                                  # 1 of 2 landing sessions
+
+
+# ── ads attribution (Google / Meta / Organic) ──────────────────────────────────
+
+@pytest.mark.parametrize("gclid,utm,fbclid,expected", [
+    (None, None, None, "organic"),
+    (False, None, False, "organic"),
+    (False, "", False, "organic"),
+    (True, None, None, "google"),                  # gclid alone
+    (True, "google", None, "google"),
+    (None, "google", None, "google"),              # utm_source alone is enough to be Ads
+    (None, "Google", None, "google"),              # case-insensitive
+    (None, "fb", None, "meta"),
+    (None, "ig", None, "meta"),
+    (None, None, True, "meta"),                    # fbclid alone
+    (True, "ig", None, "meta"),                    # utm_source wins over the click id
+    (None, "newsletter", None, "ads_other"),       # Ads (utm present) but neither network
+    (None, "newsletter", True, "meta"),            # unknown utm -> click id decides
+])
+def test_classify_source(gclid, utm, fbclid, expected):
+    assert funnel.classify_source(gclid, utm, fbclid) == expected
+
+
+def test_parse_has_fbclid():
+    assert funnel.parse_client_event(_body(fbclid=True))["has_fbclid"] is True
+    assert funnel.parse_client_event(_body(fbclid=False))["has_fbclid"] is False
+    assert funnel.parse_client_event(_body())["has_fbclid"] is None
+    assert funnel.parse_client_event(_body(fbclid="abc123"))["has_fbclid"] is None   # the value never gets stored
+
+
+def _srow(sid, event, *, gclid=None, utm=None, fbclid=None, device="mobile", detail=None, at=None):
+    return SimpleNamespace(sid=sid, event=event, has_gclid=gclid, has_fbclid=fbclid, utm_source=utm,
+                           device=device, detail=detail, url_host=None, url_label=None, created_at=at)
+
+
+def test_aggregate_splits_ads_into_google_meta_organic():
+    rows = [
+        _srow("g1", "landing", gclid=True, utm="google"),
+        _srow("g2", "landing", utm="google"),
+        _srow("m1", "landing", utm="fb", fbclid=True),
+        _srow("m2", "landing", utm="ig"),
+        _srow("m3", "landing", fbclid=True),
+        _srow("o1", "landing", gclid=False, fbclid=False),
+        _srow("o2", "landing"),
+    ]
+    c = funnel.aggregate(rows)["columns"]
+    assert c["All"]["landing"]["sessions"] == 7
+    assert c["Ads"]["landing"]["sessions"] == 5
+    assert c["Ads·Google"]["landing"]["sessions"] == 2
+    assert c["Ads·Meta"]["landing"]["sessions"] == 3
+    assert c["Organic"]["landing"]["sessions"] == 2
+
+
+def test_aggregate_attributes_per_session_not_per_row():
+    # a later row without the flags (e.g. a server event with no inherited source) stays in the Meta session
+    rows = [_srow("m1", "landing", utm="ig"), _srow("m1", "analyze_started")]
+    c = funnel.aggregate(rows)["columns"]
+    assert c["Ads·Meta"]["analyze_started"]["sessions"] == 1
+    assert c["Organic"]["analyze_started"]["sessions"] == 0
+
+
+# ── bot-like sessions: first url_field_focus < 2 s after landing ───────────────
+
+T0 = datetime(2026, 11, 9, 10, 0, 0)
+
+
+def _at(seconds):
+    from datetime import timedelta
+    return T0 + timedelta(seconds=seconds)
+
+
+def test_fast_focus_session_is_excluded_from_funnel_counts():
+    rows = [
+        _srow("bot", "landing", utm="google", at=_at(0)),
+        _srow("bot", "url_field_focus", utm="google", at=_at(1)),                 # 1 s -> bot-like
+        _srow("bot", "analyze_submit", utm="google", at=_at(2)),
+        _srow("human", "landing", utm="google", at=_at(0)),
+        _srow("human", "url_field_focus", utm="google", at=_at(5)),
+    ]
+    a = funnel.aggregate(rows)
+    assert a["bot_sessions"] == 1 and a["bot_rows"] == 3
+    c = a["columns"]
+    assert c["All"]["landing"]["sessions"] == 1
+    assert c["All"]["url_field_focus"]["sessions"] == 1
+    assert c["All"]["analyze_submit"]["sessions"] == 0
+    assert c["Ads·Google"]["landing"]["sessions"] == 1
+
+
+def test_focus_threshold_is_exactly_two_seconds():
+    rows = [_srow("a", "landing", at=_at(0)), _srow("a", "url_field_focus", at=_at(2)),      # 2.0 s: kept
+            _srow("b", "landing", at=_at(0)), _srow("b", "url_field_focus", at=_at(1.99))]   # < 2 s: bot
+    a = funnel.aggregate(rows)
+    assert a["bot_sessions"] == 1 and a["columns"]["All"]["landing"]["sessions"] == 1
+
+
+def test_browser_measured_delay_wins_over_timestamps():
+    # DB timestamps have 1 s resolution: they say 3 s, the browser measured 1.2 s -> bot-like
+    rows = [_srow("a", "landing", at=_at(0)), _srow("a", "url_field_focus", detail="dt1200", at=_at(3)),
+            _srow("b", "landing", at=_at(0)), _srow("b", "url_field_focus", detail="dt2500", at=_at(1))]
+    a = funnel.aggregate(rows)
+    assert a["bot_sessions"] == 1
+    assert a["columns"]["All"]["landing"]["sessions"] == 1
+
+
+def test_only_the_first_focus_counts_and_missing_data_is_never_a_bot():
+    rows = [_srow("a", "landing", at=_at(0)), _srow("a", "url_field_focus", at=_at(10)),
+            _srow("a", "url_field_focus", at=_at(10.5)),
+            _srow("nolanding", "url_field_focus", at=_at(0)),                          # landing outside the window
+            _srow("nots", "landing"), _srow("nots", "url_field_focus")]                # no timestamps at all
+    a = funnel.aggregate(rows)
+    assert a["bot_sessions"] == 0 and a["columns"]["All"]["url_field_focus"]["sessions"] == 3
+
+
+def test_bot_exclusion_is_reported_and_dropped_from_detail_counters():
+    rows = [_srow("bot", "landing", at=_at(0)), _srow("bot", "url_field_focus", at=_at(0.5)),
+            SimpleNamespace(**{**_srow("bot", "demo_pick", detail="car1").__dict__}),
+            _srow("ok", "landing", at=_at(0))]
+    a = funnel.aggregate(rows)
+    assert a["demo_picks"] == {}
+    assert "Excluded as bot-like" in funnel.render_text(a, "x")
+    assert "Excluded as bot-like" in funnel.render_html(a, "x")
+    assert "Excluded as bot-like" not in funnel.render_text(funnel.aggregate([_srow("ok", "landing")]), "x")

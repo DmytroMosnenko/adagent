@@ -5,7 +5,7 @@ Privacy design (keep in sync with the privacy policy):
   * no cookies, no IP address stored, no full user URLs — only the hostname of a
     pasted link plus a coarse pattern label such as "motoryzacja:filter";
   * the visitor is a random per-tab id kept in sessionStorage (static/funnel.js);
-  * the gclid *value* never leaves the browser — only a has_gclid boolean;
+  * the gclid / fbclid *values* never leave the browser — only has_gclid / has_fbclid booleans;
   * device class is derived from the User-Agent header and the header is dropped;
   * rows older than FUNNEL_RETENTION_DAYS are purged by the daily report job.
 
@@ -199,10 +199,12 @@ def parse_client_event(raw: bytes) -> Optional[dict]:
         ref = ref.lower()[:128] if isinstance(ref, str) and _HOST_RE.match(ref.lower()[:128]) else None
 
         gclid = data.get("gclid")
+        fbclid = data.get("fbclid")
         return {
             "event":        event,
             "sid":          sid,
             "has_gclid":    gclid if isinstance(gclid, bool) else None,
+            "has_fbclid":   fbclid if isinstance(fbclid, bool) else None,
             "ui_lang":      lang if lang in _LANGS else None,
             "utm_source":   _clean_utm(data.get("utm_source"), 64),
             "utm_campaign": _clean_utm(data.get("utm_campaign"), 128),
@@ -307,7 +309,7 @@ async def record_server_event(
     """
     Server-side event (invalid_url, analyze_started). The sid comes from a hidden
     form field filled by funnel.js; without JS there is no sid and the row is still
-    written, just unattributed. has_gclid / utm are inherited from the session's
+    written, just unattributed. has_gclid / has_fbclid / utm are inherited from the session's
     landing row so the report can split ad vs organic.
     """
     try:
@@ -325,8 +327,8 @@ async def record_server_event(
             if sid:
                 landing = await crud.get_funnel_landing(db, sid)
                 if landing is not None:
-                    extra = {"has_gclid": landing.has_gclid, "utm_source": landing.utm_source,
-                             "utm_campaign": landing.utm_campaign}
+                    extra = {"has_gclid": landing.has_gclid, "has_fbclid": landing.has_fbclid,
+                             "utm_source": landing.utm_source, "utm_campaign": landing.utm_campaign}
             await crud.add_funnel_event(
                 db, event=event, sid=sid, device=device_class(user_agent), ui_lang=ui_lang,
                 url_host=host, url_label=label, detail=_clean(detail, _DETAIL_RE, 64), **extra,
@@ -351,6 +353,7 @@ async def record_report_outcome(factory, report_id: str, event: str) -> None:
                 return
             await crud.add_funnel_event(
                 db, event=event, sid=started.sid, has_gclid=started.has_gclid,
+                has_fbclid=started.has_fbclid,
                 device=started.device, ui_lang=started.ui_lang, utm_source=started.utm_source,
                 utm_campaign=started.utm_campaign, url_host=started.url_host,
                 url_label=started.url_label, detail=report_id,
@@ -387,40 +390,122 @@ def day_window(day: Optional[str], days: int, tz_name: str,
 
 # ── Aggregation ────────────────────────────────────────────────────────────────
 
-def _source(has_gclid: Optional[bool]) -> str:
-    return "ads" if has_gclid is True else "organic" if has_gclid is False else "unknown"
+# utm_source values that mean "Meta" (Facebook / Instagram placements).
+META_SOURCES = frozenset({"fb", "ig", "facebook", "instagram", "meta"})
+BOT_FOCUS_SECONDS = 2.0      # first url_field_focus faster than this after landing = bot-like
+_FOCUS_DT_RE = re.compile(r"^dt(\d{1,8})$")      # funnel.js: "dt<ms since landing>"
 
+
+def classify_source(has_gclid: Optional[bool], utm_source: Optional[str],
+                    has_fbclid: Optional[bool]) -> str:
+    """
+    'google' | 'meta' | 'ads_other' | 'organic'.
+    A session is Ads when has_gclid, OR utm_source is set, OR fbclid is present; everything
+    else is Organic. Ads are split by utm_source (ig/fb -> meta, google -> google); when the
+    utm_source is missing or unrecognised the click id decides (gclid -> google, fbclid -> meta),
+    otherwise the session stays in the generic 'ads_other' bucket (still counted under Ads).
+    """
+    utm = (utm_source or "").strip().lower()
+    if not (has_gclid is True or utm or has_fbclid is True):
+        return "organic"
+    if utm in META_SOURCES:
+        return "meta"
+    if utm == "google":
+        return "google"
+    if has_gclid is True:
+        return "google"
+    if has_fbclid is True:
+        return "meta"
+    return "ads_other"
+
+
+_ADS = frozenset({"google", "meta", "ads_other"})
 
 COLUMNS: tuple[tuple[str, Any], ...] = (
     ("All",         lambda s, d: True),
-    ("Ads",         lambda s, d: s == "ads"),
+    ("Ads",         lambda s, d: s in _ADS),
+    ("Ads·Google",  lambda s, d: s == "google"),
+    ("Ads·Meta",    lambda s, d: s == "meta"),
     ("Organic",     lambda s, d: s == "organic"),
     ("Mobile",      lambda s, d: d == "mobile"),
     ("Desktop",     lambda s, d: d == "desktop"),
-    ("Ads·mobile",  lambda s, d: s == "ads" and d == "mobile"),
+    ("Ads·mobile",  lambda s, d: s in _ADS and d == "mobile"),
 )
+
+
+def _focus_delay(focus_row: Any, landing_at: Optional[datetime]) -> Optional[float]:
+    """Seconds from landing to the first url_field_focus: the browser-measured value from
+    funnel.js (detail "dt<ms>") when present, else the DB timestamp difference (1 s resolution)."""
+    m = _FOCUS_DT_RE.match(getattr(focus_row, "detail", None) or "")
+    if m:
+        return int(m.group(1)) / 1000.0
+    at = getattr(focus_row, "created_at", None)
+    if at is not None and landing_at is not None:
+        return (at - landing_at).total_seconds()
+    return None
 
 
 def aggregate(rows: Iterable[Any]) -> dict:
     """
     rows: objects with .sid .event .has_gclid .device .detail .url_host .url_label
-    (ORM rows or SimpleNamespace). Returns
+    and optionally .has_fbclid .utm_source .created_at (ORM rows or SimpleNamespace).
+    Returns
       columns: {name: {event: {"sessions": n, "events": n}}}
       invalid_reasons / demo_picks / paste_patterns: Counter dicts
       unattributed: events with no sid (JS off / blocked) per event
+      bot_sessions / bot_rows: sessions (and their rows) dropped as bot-like
     "sessions" = distinct sid that fired the event at least once in the window.
+
+    Session attribution (Ads Google/Meta vs Organic) is decided once per session from all its
+    rows, see classify_source. Bot-like sessions — first url_field_focus less than
+    BOT_FOCUS_SECONDS after landing — are excluded from every count.
     """
+    rows = list(rows)
+
+    # pass 1: per-session attribution + bot detection
+    gclid: set[str] = set()
+    fbclid: set[str] = set()
+    utm: dict[str, str] = {}
+    landing_at: dict[str, datetime] = {}
+    first_focus: dict[str, Any] = {}
+    for r in rows:
+        sid = r.sid
+        if not sid:
+            continue
+        if getattr(r, "has_gclid", None) is True:
+            gclid.add(sid)
+        if getattr(r, "has_fbclid", None) is True:
+            fbclid.add(sid)
+        if getattr(r, "utm_source", None) and sid not in utm:
+            utm[sid] = r.utm_source
+        if r.event == "landing" and sid not in landing_at and getattr(r, "created_at", None) is not None:
+            landing_at[sid] = r.created_at
+        if r.event == "url_field_focus" and sid not in first_focus:
+            first_focus[sid] = r
+    bots: set[str] = set()
+    for sid, fr in first_focus.items():
+        delay = _focus_delay(fr, landing_at.get(sid))
+        if delay is not None and delay < BOT_FOCUS_SECONDS:
+            bots.add(sid)
+
     sess: dict[str, dict[str, set]] = {c: defaultdict(set) for c, _ in COLUMNS}
     evs:  dict[str, Counter]        = {c: Counter() for c, _ in COLUMNS}
     invalid, picks, paste = Counter(), Counter(), Counter()
     unattributed: Counter = Counter()
-    n = 0
+    n = bot_rows = 0
 
     for r in rows:
         n += 1
-        src, dev = _source(r.has_gclid), r.device or "other"
-        if not r.sid:
+        if r.sid in bots:
+            bot_rows += 1
+            continue
+        if r.sid:
+            src = classify_source(r.sid in gclid, utm.get(r.sid), r.sid in fbclid)
+        else:
+            src = classify_source(getattr(r, "has_gclid", None), getattr(r, "utm_source", None),
+                                  getattr(r, "has_fbclid", None))
             unattributed[r.event] += 1
+        dev = r.device or "other"
         for name, pred in COLUMNS:
             if pred(src, dev):
                 evs[name][r.event] += 1
@@ -440,7 +525,7 @@ def aggregate(rows: Iterable[Any]) -> dict:
     return {
         "total_rows": n, "columns": columns, "invalid_reasons": dict(invalid.most_common()),
         "demo_picks": dict(picks.most_common()), "paste_patterns": dict(paste.most_common()),
-        "unattributed": dict(unattributed),
+        "unattributed": dict(unattributed), "bot_sessions": len(bots), "bot_rows": bot_rows,
     }
 
 
@@ -461,6 +546,11 @@ _STEP_HELP = {
     "analyze_done":        "report finished",
     "analyze_failed":      "report failed",
 }
+
+
+_LEGEND = ("Ads = gclid/wbraid/gbraid, fbclid or any utm_source present; Google/Meta split by utm_source "
+           "(google vs fb/ig), falling back to the click id. Organic = everything else. Bot-like "
+           "sessions are excluded. Mobile/Desktop come from the User-Agent.")
 
 
 def _cell(c: dict, landing: int) -> str:
@@ -490,8 +580,10 @@ def render_text(report: dict, label: str) -> str:
                        ("events with no session id (JS off / blocked)", "unattributed")):
         if report[key]:
             lines.append(f"{title}: " + ", ".join(f"{k}={v}" for k, v in report[key].items()))
-    lines += ["", "Ads = landing URL had a gclid/wbraid/gbraid. Organic = it did not (direct, search, "
-                  "or Ads with auto-tagging off). Mobile/Desktop come from the User-Agent."]
+    if report.get("bot_sessions"):
+        lines += ["", f"Excluded as bot-like (first url_field_focus < {BOT_FOCUS_SECONDS:g} s after landing): "
+                      f"{report['bot_sessions']} sessions, {report.get('bot_rows', 0)} events."]
+    lines += ["", _LEGEND]
     return "\n".join(lines)
 
 
@@ -499,7 +591,7 @@ def render_html(report: dict, label: str) -> str:
     cols = list(report["columns"])
     th = "padding:6px 10px;text-align:right;border-bottom:2px solid #1e3a5f;white-space:nowrap"
     td = "padding:6px 10px;text-align:right;border-bottom:1px solid #e2e8f0;white-space:nowrap"
-    out = [f'<html><body style="font-family:sans-serif;color:#1e293b;max-width:760px">'
+    out = [f'<html><body style="font-family:sans-serif;color:#1e293b;max-width:900px">'
            f'<h2 style="color:#1e3a5f">AdAgent funnel — {html.escape(label)}</h2>'
            '<p style="color:#64748b;font-size:13px">Distinct sessions per step '
            "(% of that column's landing sessions).</p>"
@@ -522,6 +614,9 @@ def render_html(report: dict, label: str) -> str:
         if report[key]:
             items = ", ".join(f"{html.escape(k)} = {v}" for k, v in report[key].items())
             out.append(f'<p style="font-size:13px"><b>{html.escape(title)}:</b> {items}</p>')
-    out.append('<p style="color:#94a3b8;font-size:12px">Ads = landing URL had a gclid/wbraid/gbraid; '
-               "Organic = it did not. Mobile/Desktop from the User-Agent.</p></body></html>")
+    if report.get("bot_sessions"):
+        out.append(f'<p style="font-size:13px"><b>Excluded as bot-like</b> (first url_field_focus &lt; '
+                   f'{BOT_FOCUS_SECONDS:g} s after landing): {report["bot_sessions"]} sessions, '
+                   f'{report.get("bot_rows", 0)} events.</p>')
+    out.append(f'<p style="color:#94a3b8;font-size:12px">{html.escape(_LEGEND)}</p></body></html>')
     return "".join(out)

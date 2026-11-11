@@ -122,26 +122,40 @@
   </script>
 
   <div class="card">
+<style>
+/* preset section: the next step when the type of ad cannot be read from the link */
+.preset-pick { color: var(--amber); font-weight: 700; font-size: 0.88rem; margin: 0 0 8px; }
+.preset-grid.needs-choice { padding: 10px; margin-left: -10px; margin-right: -10px; border-radius: 14px;
+  background: #fffbeb; outline: 2px solid var(--amber); animation: preset-glow 1.6s ease-out 1; }
+.preset-grid.needs-choice .preset-card { background: #fff; }
+.preset-grid.shake { animation: preset-shake .35s ease-in-out 1; }
+@keyframes preset-glow { 0% { box-shadow: 0 0 0 0 rgba(217,119,6,.55); } 100% { box-shadow: 0 0 0 14px rgba(217,119,6,0); } }
+@keyframes preset-shake { 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+@media (prefers-reduced-motion: reduce) { .preset-grid.needs-choice, .preset-grid.shake { animation: none; } }
+</style>
     <form action="/analyze" method="post">
 
       <!-- OLX URL -->
       <div class="form-group">
-        <label class="form-label" for="filter_url">{{ t("Your search link (OLX, Otomoto or Otodom)") }}</label>
+        <label class="form-label" for="filter_url">{{ t("Your search link or a single ad link (OLX, Otomoto or Otodom)") }}</label>
         <input class="form-input{% if url_error %} form-input-error{% endif %}" type="url" id="filter_url" name="filter_url" required
-               placeholder="https://www.olx.pl/motoryzacja/samochody/q-mini/"
+               placeholder="{{ t('Paste a search link or a single ad link') }}"
                aria-describedby="filter_url_error"
-               data-msg-empty="{{ t('Please paste your search link.') }}"
+               data-msg-empty="{{ t('Please paste a search link or a single ad link.') }}"
                data-msg-invalid="{{ t('Please enter a valid link starting with https://') }}">
         <p class="form-error" id="filter_url_error" role="alert"{% if not url_error %} hidden{% endif %}>{{ url_error or "" }}</p>
-        <p class="form-hint">{{ t("Open OLX, Otomoto or Otodom, set your filters (brand, price, year…), then copy the address from the browser bar and paste it here.") }}</p>
-        <p class="form-hint form-hint-app">📱 {{ t("In the OLX app: Share → Copy link") }}</p>
+        <p class="form-hint">{{ t("Open OLX, Otomoto or Otodom and set your filters (brand, price, year…) — or open a single ad — then copy the address from the browser bar and paste it here.") }}</p>
+        <p class="form-hint form-hint-app">📱 {{ t("In the OLX app: open a search or an ad, then Share → Copy link") }}</p>
         <p class="form-hint"><a href="{{ settings.SAMPLE_REPORT_URL or '#example' }}"{% if settings.SAMPLE_REPORT_URL %} target="_blank" rel="noopener"{% endif %} data-funnel="sample">{{ t("No link yet? See an example report →") }}</a></p>
       </div>
 
       <!-- Preset selector -->
       <div class="form-group">
-        <label class="form-label">{{ t("Analysis preset") }}</label>
-        <div class="preset-grid">
+        <label class="form-label" id="preset-label">{{ t("Analysis preset") }}</label>
+        <p class="preset-pick" id="preset-pick" role="alert" hidden
+           data-msg-olx="{{ t('We can\'t tell the type of this OLX ad from its link — please choose what kind of ad it is.') }}"
+           data-msg-none="{{ t('Please choose an analysis preset.') }}"></p>
+        <div class="preset-grid" id="preset-grid" role="radiogroup" aria-labelledby="preset-label">
           {% for key, meta in presets.items() %}
           <label class="preset-card">
             <input type="radio" name="prompt_preset" value="{{ key }}"
@@ -348,14 +362,72 @@
       }
       return null;
     }
+    // No preset is preselected: it ends up chosen either from the link (automatically) or by the
+    // visitor. When the link cannot tell (an OLX ad link has no category) or nothing is chosen
+    // on submit, the preset section is highlighted and scrolled into view as the next step.
+    // Without JS the first preset stays checked (markup), so the plain form still works.
+    var grid = document.getElementById('preset-grid'), pick = document.getElementById('preset-pick');
+    var ALL = document.querySelectorAll('input[name="prompt_preset"]');
+    function chosen() { return document.querySelector('input[name="prompt_preset"]:checked'); }
+    function isOlxAd(raw) {
+      var u;
+      try { u = new URL((raw || '').trim()); } catch (e) { return false; }
+      var host = u.hostname.toLowerCase();
+      return (host === 'olx.pl' || host.endsWith('.olx.pl')) && /^\/d\/oferta\/[^/]/i.test(u.pathname);
+    }
+    function reveal() {          // bring the preset section (and its note) into view, only if needed
+      if (!grid || !window.matchMedia) return;
+      var end = (note && !note.hidden ? note : grid).getBoundingClientRect().bottom;
+      var top = grid.getBoundingClientRect().top;
+      if (top >= 0 && end <= window.innerHeight) return;
+      var calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      grid.scrollIntoView({behavior: calm ? 'auto' : 'smooth', block: 'center'});
+    }
+    function ask(message) {      // highlight the section with a hint saying why
+      if (!grid) return;
+      if (pick) { pick.textContent = '\ud83d\udc47 ' + message; pick.hidden = false; }
+      grid.classList.add('needs-choice');
+    }
+    function settle() {          // a preset is chosen: remove every highlight ("all good")
+      if (grid) grid.classList.remove('needs-choice', 'shake');
+      if (pick) pick.hidden = true;
+    }
+    ALL.forEach(function (r) { r.checked = false; });      // nothing preselected
+    toggle();
+    document.querySelectorAll('.preset-card').forEach(function (c) {
+      c.addEventListener('click', settle);
+    });
+    // Capture phase on purpose: runs before the fetch-based submit handler further down.
+    var formEl0 = urlInput.form;
+    if (formEl0) formEl0.addEventListener('submit', function (e) {
+      if (chosen()) return;
+      e.preventDefault(); e.stopImmediatePropagation();
+      ask(pick ? (isOlxAd(urlInput.value) ? pick.dataset.msgOlx : pick.dataset.msgNone) : '');
+      grid.classList.remove('shake'); void grid.offsetWidth; grid.classList.add('shake');   // restart the nudge
+      reveal();
+    }, true);
+
     function autoSelect() {
       if (chosenByHand) return;
       var kind = kindOf(urlInput.value);
-      if (!kind) return;
+      if (!kind) {
+        if (isOlxAd(urlInput.value)) {
+          ALL.forEach(function (r) { r.checked = false; });
+          toggle();
+          if (note) note.hidden = true;
+          ask(pick.dataset.msgOlx);
+          reveal();
+        } else if (!chosen()) { settle(); }
+        return;
+      }
       var radio = document.querySelector('input[name="prompt_preset"][value="' + kind + '"]');
       if (!radio) return;
-      if (!radio.checked) { radio.checked = true; radio.dispatchEvent(new Event('change', {bubbles: true})); }
+      var changed = !radio.checked;
+      if (changed) { radio.checked = true; radio.dispatchEvent(new Event('change', {bubbles: true})); }
+      settle();
       if (note) note.hidden = false;
+      if (changed) reveal();      // show the visitor which preset was picked for them
+      return;
     }
     urlInput.addEventListener('input', autoSelect);
   })();

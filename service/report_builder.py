@@ -476,7 +476,29 @@ def _with_m2_unit(value) -> str:
     return text if re.search(r"m\s*(?:²|2|\^2)", text, re.IGNORECASE) else f"{text}/m²"
 
 
-def _prepare_ad(result: dict) -> dict:
+# Single-ad reports: e-mail addresses and phone numbers (+CC / 9-digit / landline
+# groupings) are masked in every text the report prints — sellers put them in titles
+# and descriptions and the AI can echo them. Filter reports are left as they are.
+_EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+_PHONE_RE = re.compile(
+    r"(?<![\w+])(?:\+\d{1,3}[\s.-]?)?"
+    r"(?:\d{3}[\s.-]?\d{3}[\s.-]?\d{3}|\d{2}[\s.-]?\d{3}[\s.-]?\d{2}[\s.-]?\d{2})(?!\d)"
+)
+_NOT_SCRUBBED = ("url", "image_url", "image_thumb", "image_medium", "site_label", "raw")
+
+
+def _scrub(value):
+    """Mask e-mails / phone numbers in every string inside str | list | dict."""
+    if isinstance(value, str):
+        return _PHONE_RE.sub("•••", _EMAIL_RE.sub("•••", value))
+    if isinstance(value, list):
+        return [_scrub(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _scrub(v) for k, v in value.items()}
+    return value
+
+
+def _prepare_ad(result: dict, single_ad: bool = False) -> dict:
     """Convert a raw pipeline result into a Jinja2-ready dict."""
     raw_analysis = result.get("analysis", "")
     p   = parse_json_safe(raw_analysis, _fallback_analysis(raw_analysis))
@@ -525,8 +547,13 @@ def _prepare_ad(result: dict) -> dict:
     url     = result.get("url", "")
     image_url = raw.get("image_url") or ""
     deep_dive = p.get("deep_dive") or {}
+    # Optional "what to ask the seller" checklist — only if the per-ad analysis returns one
+    # (top-level or inside deep_dive "seller_questions": [short strings]); never invented here.
+    questions = p.get("seller_questions") or deep_dive.get("seller_questions") or []
+    seller_questions = [str(q).strip() for q in questions if str(q).strip()] \
+        if single_ad and isinstance(questions, list) else []
 
-    return {
+    ad = {
         "url":                    url,
         "site_label":             _site_label(url),
         "category":               _detect_category(specs),
@@ -555,6 +582,7 @@ def _prepare_ad(result: dict) -> dict:
         "price_assessment_label": _PRICE_LABELS.get(price_a, ""),
         "red_flags":              p.get("red_flags") or [],
         "positives":              p.get("positives") or [],
+        "seller_questions":       seller_questions,
         "deep_dive": {
             "general_specs":          deep_dive.get("general_specs") or "",
             "mentioned_fixes":        deep_dive.get("mentioned_fixes") or [],
@@ -574,6 +602,9 @@ def _prepare_ad(result: dict) -> dict:
             "error":       raw.get("error", ""),
         },
     }
+    if single_ad:
+        ad = {k: (v if k in _NOT_SCRUBBED else _scrub(v)) for k, v in ad.items()}
+    return ad
 
 
 def build_html_report(
@@ -586,15 +617,22 @@ def build_html_report(
     ui_lang: str = "en",
     template_dir: str = "templates",
     template_file: str = "report.html.j2",
+    single_ad: bool = False,
 ) -> str:
-    """Render Jinja2 template → return HTML string (caller writes the file)."""
+    """
+    Render Jinja2 template → return HTML string (caller writes the file).
+
+    single_ad=True renders the one-listing layout: no leaderboard, no market
+    overview (summary_text is ignored — nothing is compared), no raw scraped
+    data, contact details masked, and the primary button reads "View ad".
+    """
     try:
         from jinja2 import Environment, FileSystemLoader
     except ImportError:
         logger.error("jinja2 not installed")
         raise
 
-    summary = parse_json_safe(summary_text, _fallback_summary())
+    summary = _fallback_summary() if single_ad else parse_json_safe(summary_text, _fallback_summary())
 
     # Deduplicate by normalized URL
     seen: set[str] = set()
@@ -605,7 +643,7 @@ def build_html_report(
             seen.add(key)
             unique.append(r)
 
-    ads = [_prepare_ad(r) for r in unique]
+    ads = [_prepare_ad(r, single_ad) for r in unique]
     ads.sort(key=lambda a: a["rating"], reverse=True)
 
     recommended_links = _build_recommended_links(summary.get("recommended_ads"), ads)
@@ -628,6 +666,7 @@ def build_html_report(
         "pass_label":     settings.pass_price_label(ui_lang),
         "filter_url":     filter_url,
         "filter_site":    _site_label(filter_url),
+        "single_ad":      single_ad,
         "generated_at":   datetime.now().strftime("%Y-%m-%d %H:%M"),
         "total_ads":      len(ads),
         "ads_found":      ads_found,

@@ -314,3 +314,34 @@ def test_funnel_exclude_emails_property():
         assert settings.funnel_exclude_emails == frozenset({"a@x.com", "b@x.com"})
     with patch.object(settings, "FUNNEL_EXCLUDE_EMAILS", ""):
         assert settings.funnel_exclude_emails == frozenset()
+
+
+# ── report outcome detail: "<report id>[:<reason>:<duration_ms>]" ─────────────
+
+async def test_report_outcome_detail_carries_reason_and_duration(db, patch_task_db):
+    from service import crud, funnel
+    rid = "ab" * 16
+    with patch.object(funnel, "_enabled", return_value=True):
+        await crud.add_funnel_event(db, event="analyze_started", sid="s1", detail=rid,
+                                    url_host="olx.pl", url_label="d:ad")
+        await funnel.record_report_outcome(patch_task_db, rid, "analyze_failed",
+                                           reason="gone", duration_ms=1234)
+        await funnel.record_report_outcome(patch_task_db, rid, "analyze_done", duration_ms=5)
+    details = {e.event: e.detail for e in await _all_events(db)}
+    assert details["analyze_failed"] == f"{rid}:gone:1234"
+    assert details["analyze_done"] == f"{rid}:ok:5"
+    assert len(rid) == 32
+
+
+async def test_erasure_removes_outcome_rows_with_a_suffix(db):
+    from service import crud
+    rid = "cd" * 16
+    for ev, det in (("analyze_started", rid), ("analyze_failed", f"{rid}:gone:900")):
+        await crud.add_funnel_event(db, event=ev, sid=None, detail=det)
+    assert await crud.delete_funnel_events(db, [], [rid]) == 2
+
+
+async def _all_events(db):
+    from sqlalchemy import select
+    from service.models import FunnelEvent
+    return (await db.execute(select(FunnelEvent))).scalars().all()

@@ -402,6 +402,7 @@ async def report_view(
     if report.status in ("pending", "running"):
         return _tpl("status.html", request, {
             "report": report, "user": user, "subscribed": subscribed,
+            "single_ad": scraper.is_single_ad_url(report.filter_url),
         })
 
     if report.status == "failed":
@@ -410,9 +411,13 @@ async def report_view(
         # pointless "retry identical search" CTA when it's a real 0-match
         # result rather than a scraping problem.
         is_no_match = bool(report.error_message) and report.error_message.startswith("No ads match this search")
+        # Single-ad mode (tasks.SINGLE_AD_ERRORS["gone"]): a removed ad stays removed, so no retry button.
+        is_gone = bool(report.error_message) and report.error_message.startswith("This ad is no longer available")
         return _tpl("error.html", request, {
             "message": report.error_message or "Analysis failed.",
             "is_no_match": is_no_match,
+            "no_retry": is_gone,
+            "single_ad": scraper.is_single_ad_url(report.filter_url),
             "report": report,
             "user": user,
         })

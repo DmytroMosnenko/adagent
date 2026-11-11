@@ -271,8 +271,13 @@ details.raw.deep-dive>summary:hover{background:#e1ecf9;color:var(--navy)}
 <!-- Report header -->
 <header class="site-header">
   <h1>🔍 {{ t("AdAgent Report") }}</h1>
+  {%- if single_ad %}
+  <span class="meta-chip">{{ generated_at }}</span>
+  <a href="{{ ads[0].url if ads else filter_url }}" target="_blank" rel="noopener" class="filter-btn">{{ t("View ad ↗") }}</a>
+  {%- else %}
   <span class="meta-chip">{{ t("Ads:") }} {{ total_ads }} · {{ generated_at }}</span>
   <a href="{{ filter_url }}" target="_blank" class="filter-btn">{{ t("View {site} filter ↗", site=filter_site) }}</a>
+  {%- endif %}
 </header>
 
 <!-- Freemium banner -->
@@ -294,6 +299,7 @@ details.raw.deep-dive>summary:hover{background:#e1ecf9;color:var(--navy)}
 
 <div class="container">
 
+{# a lone ad has nothing to be ranked against: single-ad reports have no leaderboard #}{% if not single_ad -%}
 <!-- Leaderboard -->
 <section id="leaderboard">
   <p class="section-heading">🏆 {{ t("Leaderboard — ranked by AI rating") }}</p>
@@ -349,6 +355,7 @@ details.raw.deep-dive>summary:hover{background:#e1ecf9;color:var(--navy)}
     {% endfor %}
   </div>
 </section>
+{%- endif %}
 
 <!-- Market summary -->
 {% if market_summary %}
@@ -377,10 +384,10 @@ details.raw.deep-dive>summary:hover{background:#e1ecf9;color:var(--navy)}
   <div class="ad-card {{ ad.verdict }}" id="ad-{{ loop.index0 }}">
     <div class="ad-lead{% if ad.image_medium %} has-photo{% endif %}">
     {% if ad.image_medium %}
-    <div class="ad-thumb"><a href="{{ ad.url }}" target="_blank" tabindex="-1"><img src="{{ ad.image_medium }}" alt="{{ ad.title }}" width="160" height="108" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.style.display='none'"></a><span class="rank-badge {% if loop.index==1 %}gold{% elif loop.index==2 %}silver{% elif loop.index==3 %}bronze{% endif %}">{{ loop.index }}</span></div>
+    <div class="ad-thumb"><a href="{{ ad.url }}" target="_blank" tabindex="-1"><img src="{{ ad.image_medium }}" alt="{{ ad.title }}" width="160" height="108" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.style.display='none'"></a>{% if not single_ad %}<span class="rank-badge {% if loop.index==1 %}gold{% elif loop.index==2 %}silver{% elif loop.index==3 %}bronze{% endif %}">{{ loop.index }}</span>{% endif %}</div>
     {% endif %}
     <div class="ad-header">
-      {% if not ad.image_medium %}
+      {% if not ad.image_medium and not single_ad %}
       <div class="rank-circle {% if loop.index==1 %}gold{% elif loop.index==2 %}silver{% elif loop.index==3 %}bronze{% endif %}">{{ loop.index }}</div>
       {% endif %}
       <div class="ad-title-group">
@@ -435,6 +442,13 @@ details.raw.deep-dive>summary:hover{background:#e1ecf9;color:var(--navy)}
       </div>
     </details>
     {% endif %}
+    {%- if ad.seller_questions %}
+    <details class="raw deep-dive" open>
+      <summary>❓ {{ t("What to ask the seller") }}</summary>
+      <div class="raw-body"><div class="raw-section"><ul class="fixes-list">{% for q in ad.seller_questions %}<li>{{ q }}</li>{% endfor %}</ul></div></div>
+    </details>
+    {%- endif %}
+    {%- if not single_ad %}{# raw scraped text (descriptions, seller contact details) stays out of single-ad reports #}
     <details class="raw">
       <summary>{{ t("Raw scraped data") }}</summary>
       <div class="raw-body">
@@ -445,6 +459,7 @@ details.raw.deep-dive>summary:hover{background:#e1ecf9;color:var(--navy)}
         {% if ad.raw.error %}<div class="raw-section"><div class="raw-section-label">{{ t("Error") }}</div><p style="color:var(--red)">{{ ad.raw.error }}</p></div>{% endif %}
       </div>
     </details>
+    {%- endif %}
   </div>
   {% endfor %}
   </div>
@@ -492,7 +507,7 @@ details.raw.deep-dive>summary:hover{background:#e1ecf9;color:var(--navy)}
       if(t)t.scrollIntoView({behavior:'smooth',block:'start'});
       lastLbId=null;lbl.textContent={{ t('Top')|tojson }};
     } else {
-      document.getElementById('leaderboard').scrollIntoView({behavior:'smooth'});
+      (document.getElementById('leaderboard')||document.body).scrollIntoView({behavior:'smooth'});   // no leaderboard in single-ad reports
     }
   });
   window.addEventListener('scroll',function(){

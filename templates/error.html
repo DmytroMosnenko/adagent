@@ -14,7 +14,7 @@
       {{ t(message | default('Something went wrong during the analysis.')) }}
     </p>
 
-    {% if report and report.filter_url and not is_no_match %}
+    {% if report and report.filter_url and not is_no_match and not no_retry %}
     <form action="/analyze" method="post" style="margin-bottom:12px">
       <input type="hidden" name="filter_url" value="{{ report.filter_url }}">
       <input type="hidden" name="report_language" value="{{ report.report_language or '' }}">
@@ -24,7 +24,7 @@
       <input type="hidden" name="custom_ad_prompt" value="{{ report.custom_ad_prompt or '' }}">
       <input type="hidden" name="custom_summary_prompt" value="{{ report.custom_summary_prompt or '' }}">
       {% endif %}
-      <button type="submit" class="btn btn-primary btn-full">{{ t("Found nothing — try again →") }}</button>
+      <button type="submit" class="btn btn-primary btn-full">{{ t("Try again →") if single_ad else t("Found nothing — try again →") }}</button>
     </form>
     {% endif %}
 

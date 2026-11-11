@@ -315,3 +315,96 @@ class TestScraperIntegration:
         assert _site("https://www.otomoto.pl/oferta/x") == "otomoto"
         assert _site("https://www.otodom.pl/oferta/x")  == "otodom"
         assert _site("https://www.olx.pl/d/oferta/x")   == "olx"
+
+
+# ── Single-ad mode ─────────────────────────────────────────────────────────────
+
+AD_URL = "https://www.olx.pl/d/oferta/mini-cooper-s-2018-CID5-ID123abc.html"
+
+
+def _ad_page(url=AD_URL):
+    return {"url": url, "title": "Mini Cooper S 2018", "price": "45 000 zł",
+            "page_text": "Mini Cooper S, pierwszy właściciel."}
+
+
+async def test_single_ad_skips_collection_and_market_summary(db, patch_task_db, tmp_path):
+    report_id = await _create_report(db, filter_url=AD_URL + "?reason=share#x", prompt_preset="vehicles")
+    scrape = AsyncMock(return_value=_ad_page())
+    collect, summary = AsyncMock(), AsyncMock(return_value=_fake_summary())
+
+    with (
+        patch("service.tasks.scraper.collect_all_links", new=collect),
+        patch("service.tasks.scraper.scrape_ad", new=scrape),
+        patch("service.tasks.ai_client.analyze_ad", new=AsyncMock(return_value=_fake_analysis())),
+        patch("service.tasks.ai_client.analyze_summary", new=summary),
+        patch("service.tasks.settings.REPORT_STORAGE_PATH", str(tmp_path)),
+    ):
+        await run_analysis(report_id)
+
+    collect.assert_not_called()
+    summary.assert_not_called()
+    assert scrape.call_args.args[1] == AD_URL            # tracking params / fragment stripped
+    assert scrape.call_args.kwargs == {"single": True}
+    report = await crud.get_report(db, report_id)
+    assert report.status == "done" and report.ads_found == 1 and report.ads_analyzed == 1
+    html = Path(report.report_path).read_text()
+    assert "View ad" in html and "Market Overview" not in html.split("<body>")[1]
+
+
+async def test_failed_single_ad_gives_a_clear_reason_and_frees_the_free_slot(db, patch_task_db):
+    from datetime import datetime, timedelta
+    report_id = await _create_report(db, filter_url=AD_URL, is_limited=True)
+    since = datetime.utcnow() - timedelta(days=1)
+    assert await crud.count_free_reports_since(db, since) == 1
+
+    gone = {"url": AD_URL, "error": "HTTP 404", "error_code": "gone"}
+    with patch("service.tasks.scraper.scrape_ad", new=AsyncMock(return_value=gone)):
+        await run_analysis(report_id)
+
+    report = await crud.get_report(db, report_id)
+    assert report.status == "failed"
+    assert report.error_message.startswith("This ad is no longer available")
+    assert report.is_limited is False
+    assert await crud.count_free_reports_since(db, since) == 0
+
+
+@pytest.mark.parametrize("code", ["blocked", "timeout", "unparseable"])
+async def test_failed_single_ad_codes_are_logged_and_never_cost_a_slot(db, patch_task_db, code):
+    report_id = await _create_report(db, filter_url=AD_URL, is_limited=True)
+    bad = {"url": AD_URL, "error": "raw scraper text", "error_code": code}
+    outcome = AsyncMock()
+    with (
+        patch("service.tasks.scraper.scrape_ad", new=AsyncMock(return_value=bad)),
+        patch("service.tasks.funnel.record_report_outcome", new=outcome),
+    ):
+        await run_analysis(report_id)
+
+    report = await crud.get_report(db, report_id)
+    assert report.status == "failed" and report.is_limited is False
+    assert "raw scraper text" not in report.error_message
+    args, kwargs = outcome.call_args
+    assert args[2] == "analyze_failed" and kwargs["reason"] == code
+    assert isinstance(kwargs["duration_ms"], int)
+
+
+async def test_single_ad_ai_failure_fails_cleanly(db, patch_task_db):
+    report_id = await _create_report(db, filter_url=AD_URL, is_limited=True)
+    with (
+        patch("service.tasks.scraper.scrape_ad", new=AsyncMock(return_value=_ad_page())),
+        patch("service.tasks.ai_client.analyze_ad", new=AsyncMock(return_value="AI ERROR: boom")),
+    ):
+        await run_analysis(report_id)
+    report = await crud.get_report(db, report_id)
+    assert report.status == "failed" and report.is_limited is False
+
+
+async def test_failed_filter_report_still_counts_against_the_free_tier(db, patch_task_db):
+    """Only single-ad failures release a slot; filter-mode behaviour is unchanged."""
+    from datetime import datetime, timedelta
+    report_id = await _create_report(db, is_limited=True)
+    with patch("service.tasks.scraper.collect_all_links",
+               new=AsyncMock(side_effect=RuntimeError("boom"))):
+        await run_analysis(report_id)
+    report = await crud.get_report(db, report_id)
+    assert report.status == "failed" and report.is_limited is True
+    assert await crud.count_free_reports_since(db, datetime.utcnow() - timedelta(days=1)) == 1

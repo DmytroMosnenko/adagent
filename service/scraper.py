@@ -19,7 +19,7 @@ import random
 import re
 from typing import Optional
 from datetime import datetime
-from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+from urllib.parse import urlparse, urlsplit, parse_qs, urlencode, urlunparse
 
 from .config import settings
 from .broker_client import BrokerGateClient
@@ -122,6 +122,23 @@ _BLOCK_TEXT_INDICATORS = (
     "ray id",
     "przepraszamy, coś poszło nie tak",   # "sorry, something went wrong"
 )
+
+# Single-ad mode: wording of a removed / expired ad. Checked (lower-case) against
+# the top of the page text only, where the site puts its banner, so a seller
+# writing "dane nieaktualne" in a description cannot trigger it. Not verified
+# against live pages — extend this tuple when a real dead ad slips through.
+_AD_GONE_TEXT_INDICATORS = (
+    "nieaktualn",                      # "ogłoszenie nieaktualne", "oferta jest nieaktualna"
+    "nieaktywn",                       # "ogłoszenie nieaktywne"
+    "nie jest już dostępn",            # "ogłoszenie nie jest już dostępne"
+    "zostało usunięte",
+    "zostało zakończone",
+    "wygasło", "wygasła",
+    "ogłoszenie nie istnieje",
+    "nie znaleziono strony",
+    "page not found",
+)
+_AD_GONE_TEXT_WINDOW = 1_500       # characters of body text inspected
 
 # OLX's result counter reads "Znaleźliśmy N ogłoszeń" ("We found N listings").
 # When N is 0, OLX still renders a row of unrelated "related ads" using the
@@ -267,6 +284,28 @@ def _absolute(href: str, base: str) -> str:
 
 def _clean(url: str) -> str:
     return url.split("?")[0].rstrip("/")
+
+
+def is_single_ad_url(url: str) -> bool:
+    """
+    True when `url` is ONE listing's page rather than a search/filter page.
+    Decided from the parsed hostname + path only (never a substring of the whole
+    URL), and only for URLs the host allowlist accepts. Same idea as the "ad"
+    kind of funnel.url_label(), but stricter: a slug must follow "oferta".
+      olx.pl      /d/oferta/<slug>
+      otomoto.pl  [/<category>]/oferta/<slug>      e.g. /osobowe/oferta/…-ID6H….html
+      otodom.pl   [/<lang>]/oferta/<slug>          e.g. /pl/oferta/…-ID4….
+    """
+    if url_guard.rejection_reason(url) is not None:
+        return False
+    parts = urlsplit(url.strip())
+    host = url_guard.allowed_host(parts.hostname or "")
+    segs = [s for s in parts.path.lower().split("/") if s]
+    if host == "olx.pl":
+        return len(segs) >= 3 and segs[:2] == ["d", "oferta"]
+    if host in ("otomoto.pl", "otodom.pl"):
+        return "oferta" in segs[:2] and len(segs) > segs.index("oferta") + 1
+    return False
 
 
 def _is_ad(url: str) -> bool:
@@ -1211,6 +1250,14 @@ async def _get_full_page_text(page) -> str:
         return ""
 
 
+async def _body_text(page, limit: int) -> str:
+    """First `limit` characters of the page's visible body text ("" on any error)."""
+    try:
+        return (await page.locator("body").inner_text(timeout=3_000))[:limit]
+    except Exception:
+        return ""
+
+
 async def _extract_image_url(page, url: str, site: str) -> str:
     """
     Return the ad's main photo URL (absolute https), or "" if none could be
@@ -1606,15 +1653,21 @@ async def extract_ads(links: list[str]) -> list[dict]:
     return results
 
 
-async def _extract_one(url: str, ctx, PWTimeout) -> dict:
+async def _extract_one(url: str, ctx, PWTimeout, single: bool = False) -> dict:
     """
     Extract a single ad page with retry.  Returns a data dict; on permanent
-    failure returns {"url": url, "error": "<reason>"}.
+    failure returns {"url": url, "error": "<reason>", "error_code": "<code>"}
+    with error_code one of invalid_url | blocked | timeout | error, plus
+    gone | unparseable in single-ad mode.
+
+    single=True is the one-pasted-listing mode. Retries, back-offs and timeouts are
+    exactly those of filter mode; only a clearly dead ad (404/410, redirected away
+    from an ad page, "ogłoszenie nieaktualne") fails at once, since a retry cannot help.
     """
     reason = url_guard.rejection_reason(url)
     if reason:
         logger.error("[scraper] refusing ad URL (%s): %s", reason, url[:200])
-        return {"url": url, "error": "URL not allowed"}
+        return {"url": url, "error": "URL not allowed", "error_code": "invalid_url"}
 
     site = _site(url)
 
@@ -1626,9 +1679,18 @@ async def _extract_one(url: str, ctx, PWTimeout) -> dict:
             if not url_guard.is_allowed_url(page.url):
                 logger.error("[scraper] ad page redirected off-allowlist (%s -> %s) — not scraping",
                              url, page.url[:200])
-                return {"url": url, "error": "Redirected to a disallowed URL"}
+                return {"url": url, "error": "Redirected to a disallowed URL", "error_code": "invalid_url"}
             status = resp.status if resp else 0
             logger.debug("[scraper] ad page HTTP %d (attempt %d): %s", status, attempt + 1, url)
+
+            # ── Single-ad mode: a dead ad fails at once, and the FINAL url (after
+            #    redirects) must still be an ad page — removed ads often bounce to a
+            #    search/category page, which must never be read as the ad.
+            if single:
+                if status in (404, 410) or not is_single_ad_url(page.url):
+                    logger.info("[scraper] ad gone (HTTP %d, final %s): %s", status, page.url[:200], url)
+                    return {"url": url, "error": f"Ad not available (HTTP {status})", "error_code": "gone"}
+                site = _site(page.url)      # an ad can redirect to a sibling site
 
             # ── 403 handling: back off and retry ───────────────────────────
             if status == 403:
@@ -1640,11 +1702,18 @@ async def _extract_one(url: str, ctx, PWTimeout) -> dict:
                     logger.info("[scraper] backing off %.1fs before retry", delay)
                     await asyncio.sleep(delay)
                     continue
-                return {"url": url, "error": "HTTP 403 — rate limited (retries exhausted)"}
+                return {"url": url, "error": "HTTP 403 — rate limited (retries exhausted)",
+                        "error_code": "blocked"}
 
             # ── Wait for JS-rendered content ────────────────────────────────
             await _dismiss_consent(page)
             await _wait_for_content(page, site)
+
+            if single:      # 200 page that says the ad is gone
+                head = (await _body_text(page, _AD_GONE_TEXT_WINDOW)).lower()
+                if any(m in head for m in _AD_GONE_TEXT_INDICATORS):
+                    logger.info("[scraper] ad page says the ad is gone: %s", url)
+                    return {"url": url, "error": "Ad no longer available (page says so)", "error_code": "gone"}
 
             # ── Check for ad-load / skip issues ─────────────────────────────
             await _check_ad_load_issues(page, url)
@@ -1684,6 +1753,9 @@ async def _extract_one(url: str, ctx, PWTimeout) -> dict:
 
                 logger.warning("[scraper] No data found on %s (attempt %d/%d)",
                                url, attempt + 1, _MAX_RETRIES + 1)
+                if single:      # name the cause while the page is still open
+                    low = (await _body_text(page, 3_000)).lower()
+                    no_data_code = "blocked" if any(m in low for m in _BLOCK_TEXT_INDICATORS) else "unparseable"
                 await page.close();
                 page = None
                 if attempt < _MAX_RETRIES:
@@ -1691,6 +1763,8 @@ async def _extract_one(url: str, ctx, PWTimeout) -> dict:
                     logger.info("[scraper] backing off %.1fs before retry", delay)
                     await asyncio.sleep(delay)
                     continue
+                if single:
+                    return {"url": url, "error": "No ad data found on the page", "error_code": no_data_code}
 
             # ── Extract parameters ───────────────────────────────────────────
             params = await _extract_params(page, site)
@@ -1734,21 +1808,22 @@ async def _extract_one(url: str, ctx, PWTimeout) -> dict:
                 logger.info("[scraper] waiting %.1fs before retry", delay)
                 await asyncio.sleep(delay)
             else:
-                return {"url": url, "error": f"Timeout after {_MAX_RETRIES + 1} attempts"}
+                return {"url": url, "error": f"Timeout after {_MAX_RETRIES + 1} attempts",
+                        "error_code": "timeout"}
 
         except Exception as exc:
             logger.error("[scraper] unexpected error on %s: %s", url, exc)
-            return {"url": url, "error": str(exc)}
+            return {"url": url, "error": str(exc), "error_code": "error"}
 
         finally:
             if page:
                 try: await page.close()
                 except Exception: pass
 
-    return {"url": url, "error": "All retries exhausted"}
+    return {"url": url, "error": "All retries exhausted", "error_code": "error"}
 
 
-async def scrape_ad(report_id: str, url: str) -> dict:
+async def scrape_ad(report_id: str, url: str, single: bool = False) -> dict:
     """
     Scrape a single ad, fairly sharing the global proxy-concurrency budget
     with every other report's ad scraping and link collection currently in
@@ -1758,13 +1833,15 @@ async def scrape_ad(report_id: str, url: str) -> dict:
     ads in a sequential loop: callers now launch one scrape_ad() task per
     ad (e.g. via asyncio.gather) and scrape_gate handles both the global
     concurrency cap and fair round-robin ordering between reports.
+
+    single=True: the whole report is this one pasted listing (see _extract_one).
     """
     from playwright.async_api import TimeoutError as PWTimeout
 
     async def _do() -> dict:
         ctx = await context_pool.acquire()
         try:
-            data = await _extract_one(url, ctx, PWTimeout)
+            data = await _extract_one(url, ctx, PWTimeout, single=single)
             # Same pacing the old sequential loop applied between ads, now
             # applied per-lane: each of scrape_gate's `capacity` concurrent
             # lanes paces itself like the old single lane did, instead of

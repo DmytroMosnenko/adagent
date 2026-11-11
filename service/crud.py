@@ -408,7 +408,8 @@ async def get_funnel_sids_by_report_ids(db: AsyncSession, report_ids: list[str])
 
 async def delete_funnel_events(db: AsyncSession, sids: list[str], report_ids: list[str]) -> int:
     """Delete every event of these sessions, plus the report-bound events (started/done/failed,
-    matched by report id) which may have no sid when the visitor had JS off."""
+    matched by report id) which may have no sid when the visitor had JS off. done/failed rows
+    may carry a ":<reason>:<ms>" suffix after the 32-char report id, hence the substr."""
     deleted = 0
     for i in range(0, len(sids), 500):
         r = await db.execute(delete(FunnelEvent).where(FunnelEvent.sid.in_(sids[i:i + 500])))
@@ -416,7 +417,7 @@ async def delete_funnel_events(db: AsyncSession, sids: list[str], report_ids: li
     for i in range(0, len(report_ids), 500):
         r = await db.execute(delete(FunnelEvent).where(
             FunnelEvent.event.in_(("analyze_started", "analyze_done", "analyze_failed")),
-            FunnelEvent.detail.in_(report_ids[i:i + 500])))
+            func.substr(FunnelEvent.detail, 1, 32).in_(report_ids[i:i + 500])))
         deleted += int(r.rowcount or 0)
     await db.commit()
     return deleted

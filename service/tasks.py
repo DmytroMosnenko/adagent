@@ -5,6 +5,7 @@ One task per report — fully async, no threads needed except for Stripe/SES cal
 from __future__ import annotations
 import asyncio
 import json
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -27,6 +28,51 @@ def _prompt_paths(preset: str) -> tuple[str, str]:
         f"prompts/{preset}_ad.txt",
         f"prompts/{preset}_summary.txt",
     )
+
+
+# Single-ad mode: why a run failed (error_code from scraper._extract_one, plus the AI
+# and catch-all ones) -> the text the user sees. English source strings: error.html
+# translates them via i18n.py, like the other messages stored in error_message.
+# adagent_server.report_view keys off the "gone" prefix to hide the pointless retry button.
+SINGLE_AD_ERRORS = {
+    "gone": "This ad is no longer available (it was removed or has expired), or the link does not open an ad. Check the link in your browser or try another ad.",
+    "blocked": "The site blocked our access to this ad. This is usually temporary — please try again in a few minutes.",
+    "timeout": "The ad page took too long to load. Please try again in a moment.",
+    "unparseable": "We could not read this ad page — its layout may not be supported yet. Try another ad or a search link.",
+    "invalid_url": "This link does not lead to an ad on olx.pl, otomoto.pl or otodom.pl.",
+    "ai_failed": "The AI analysis of this ad failed. Please try again in a moment.",
+    "error": "Something went wrong while analyzing this ad. Please try again.",
+}
+
+
+class SingleAdError(Exception):
+    """A single-ad report failed for a known reason (a key of SINGLE_AD_ERRORS)."""
+    def __init__(self, code: str):
+        super().__init__(code)
+        self.code = code if code in SINGLE_AD_ERRORS else "error"
+
+
+def _elapsed_ms(started: float) -> int:
+    return int((time.monotonic() - started) * 1000)
+
+
+async def _fail_single_ad(report_id: str, code: str, started: float) -> None:
+    """
+    Fail a single-ad report with a user-facing reason AND hand the free-tier slot
+    back: crud.count_free_reports_since() only counts is_limited reports, so a run
+    that produced nothing must stop being one.
+    """
+    async with async_session() as db:
+        await crud.update_report(
+            db, report_id,
+            status="failed",
+            error_message=SINGLE_AD_ERRORS[code],
+            is_limited=False,
+            finished_at=datetime.now(timezone.utc).replace(tzinfo=None),
+        )
+    await funnel.record_report_outcome(async_session, report_id, "analyze_failed",
+                                       reason=code, duration_ms=_elapsed_ms(started))
+    await _maybe_notify_finished(report_id, "failed")
 
 
 async def _maybe_notify_finished(report_id: str, status: str) -> None:
@@ -62,7 +108,13 @@ async def run_analysis(report_id: str) -> None:
       5. AI summary
       6. Build HTML report (preset) or store JSON (custom)
       7. Mark report done
+
+    Single-ad mode (the pasted link is one listing, scraper.is_single_ad_url):
+    step 1 is just that URL and step 5 is skipped — there is no market to
+    summarize. Any failure then fails the report with a clear reason
+    (SINGLE_AD_ERRORS) and releases its free-tier slot (_fail_single_ad).
     """
+    started = time.monotonic()
     logger.info("[task] starting report %s", report_id)
 
     async with async_session() as db:
@@ -73,10 +125,17 @@ async def run_analysis(report_id: str) -> None:
 
         await crud.update_report(db, report_id, status="running")
 
+    single = scraper.is_single_ad_url(report.filter_url)
+
     try:
         # ── 1. Collect all links ───────────────────────────────────────────────
-        logger.info("[task] %s collecting links from %s", report_id, report.filter_url)
-        all_links, link_diagnosis = await scraper.collect_all_links(report.filter_url, report_id)
+        if single:
+            # Never crawl it as a search page: that finds "similar ads" or nothing.
+            logger.info("[task] %s single-ad mode: %s", report_id, report.filter_url)
+            all_links, link_diagnosis = [report.filter_url.split("#")[0].split("?")[0].rstrip("/")], "ok"
+        else:
+            logger.info("[task] %s collecting links from %s", report_id, report.filter_url)
+            all_links, link_diagnosis = await scraper.collect_all_links(report.filter_url, report_id)
         ads_found = len(all_links)
         logger.info("[task] %s found %d links (diagnosis=%s)", report_id, ads_found, link_diagnosis)
 
@@ -115,7 +174,8 @@ async def run_analysis(report_id: str) -> None:
                     error_message=message,
                     finished_at=datetime.now(timezone.utc).replace(tzinfo=None),
                 )
-            await funnel.record_report_outcome(async_session, report_id, "analyze_failed")
+            await funnel.record_report_outcome(async_session, report_id, "analyze_failed",
+                                               duration_ms=_elapsed_ms(started))
             await _maybe_notify_finished(report_id, "failed")
             return
 
@@ -164,7 +224,11 @@ async def run_analysis(report_id: str) -> None:
             nonlocal completed
 
             # -- Extract --
-            data = await scraper.scrape_ad(report_id, url)
+            data = await scraper.scrape_ad(report_id, url, **({"single": True} if single else {}))
+            if single and data.get("error"):
+                raise SingleAdError(data.get("error_code") or "error")
+            if single and not (data.get("title") or data.get("page_text")):
+                raise SingleAdError("unparseable")
 
             # -- Analyze --
             try:
@@ -175,6 +239,11 @@ async def run_analysis(report_id: str) -> None:
             except Exception as exc:
                 analysis = f"AI ERROR: {exc}"
                 logger.warning("[task] ad analysis failed: %s", exc)
+            # A lone ad has nothing to hide an unusable analysis behind: fail instead of
+            # rendering "AI ERROR…" or unparsed text as the report.
+            if single and (analysis.startswith("AI ERROR")
+                           or (is_structured and not ai_client.parse_json_safe(analysis, {}))):
+                raise SingleAdError("ai_failed")
 
             # Serialize the increment + DB write so progress is always
             # written in increasing order even though ads finish out of order.
@@ -189,16 +258,18 @@ async def run_analysis(report_id: str) -> None:
         results: list[dict] = await asyncio.gather(*[_process_one_ad(u) for u in links])
 
         # ── 5. AI summary ──────────────────────────────────────────────────────
-        logger.info("[task] %s generating summary", report_id)
-        try:
-            if is_templated:
-                summary_text = await ai_client.analyze_summary_templated(results, summary_prompt, report_id, lang_reminder)
-            else:
-                summary_text = await ai_client.analyze_summary(results, summary_prompt, report_id, lang_reminder)
-        except Exception as exc:
-            summary_text = json.dumps({"market_summary": f"Summary failed: {exc}",
-                                       "price_range": "", "average_price": "", "recommendation": ""})
-            logger.warning("[task] summary failed: %s", exc)
+        summary_text = ""
+        if not single:      # one ad has no "market" to summarize (and no summary call to pay for)
+            logger.info("[task] %s generating summary", report_id)
+            try:
+                if is_templated:
+                    summary_text = await ai_client.analyze_summary_templated(results, summary_prompt, report_id, lang_reminder)
+                else:
+                    summary_text = await ai_client.analyze_summary(results, summary_prompt, report_id, lang_reminder)
+            except Exception as exc:
+                summary_text = json.dumps({"market_summary": f"Summary failed: {exc}",
+                                           "price_range": "", "average_price": "", "recommendation": ""})
+                logger.warning("[task] summary failed: %s", exc)
 
         # ── 6. Build output ────────────────────────────────────────────────────
         if is_structured:
@@ -213,6 +284,7 @@ async def run_analysis(report_id: str) -> None:
                 ui_lang="pl" if report.report_language == "pl" else "en",
                 template_dir="templates",
                 template_file="report.html.j2",
+                single_ad=single,
             )
             report_dir = Path(settings.REPORT_STORAGE_PATH)
             report_dir.mkdir(parents=True, exist_ok=True)
@@ -226,7 +298,8 @@ async def run_analysis(report_id: str) -> None:
                     report_path=report_path,
                     finished_at=datetime.now(timezone.utc).replace(tzinfo=None),
                 )
-            await funnel.record_report_outcome(async_session, report_id, "analyze_done")
+            await funnel.record_report_outcome(async_session, report_id, "analyze_done",
+                                               duration_ms=_elapsed_ms(started))
             await _maybe_notify_finished(report_id, "done")
         else:
             # Custom prompts, or a preset with output="raw" (e.g. vehicles_detailed) — store JSON
@@ -247,13 +320,21 @@ async def run_analysis(report_id: str) -> None:
                     result_json=payload,
                     finished_at=datetime.now(timezone.utc).replace(tzinfo=None),
                 )
-            await funnel.record_report_outcome(async_session, report_id, "analyze_done")
+            await funnel.record_report_outcome(async_session, report_id, "analyze_done",
+                                               duration_ms=_elapsed_ms(started))
             await _maybe_notify_finished(report_id, "done")
 
-        logger.info("[task] %s done", report_id)
+        logger.info("[task] %s done in %d ms", report_id, _elapsed_ms(started))
+
+    except SingleAdError as exc:
+        logger.warning("[task] %s single-ad failed (%s) after %d ms", report_id, exc.code, _elapsed_ms(started))
+        await _fail_single_ad(report_id, exc.code, started)
 
     except Exception as exc:
         logger.exception("[task] %s failed: %s", report_id, exc)
+        if single:
+            await _fail_single_ad(report_id, "error", started)
+            return
         async with async_session() as db:
             await crud.update_report(
                 db, report_id,
@@ -261,5 +342,6 @@ async def run_analysis(report_id: str) -> None:
                 error_message=str(exc),
                 finished_at=datetime.now(timezone.utc).replace(tzinfo=None),
             )
-        await funnel.record_report_outcome(async_session, report_id, "analyze_failed")
+        await funnel.record_report_outcome(async_session, report_id, "analyze_failed",
+                                           duration_ms=_elapsed_ms(started))
         await _maybe_notify_finished(report_id, "failed")

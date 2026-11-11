@@ -6,14 +6,14 @@
   <div class="card">
     <div class="status-box">
       <div class="spinner"></div>
-      <h2 style="margin-top:20px;color:var(--navy)">{{ t("Analyzing your search…") }}</h2>
+      <h2 style="margin-top:20px;color:var(--navy)">{{ t("Analyzing your ad…") if single_ad else t("Analyzing your search…") }}</h2>
       <p class="progress-text" id="status-msg">{{ t("Starting up…") }}</p>
       <p class="progress-text" id="progress-detail" style="font-size:0.78rem;color:var(--muted);margin-top:4px"></p>
       <div class="progress-bar-wrap">
         <div class="progress-bar-fill" id="progress-bar" style="width:0%"></div>
       </div>
       <p style="margin-top:24px;font-size:0.8rem;color:var(--muted)">
-        {{ t("This takes 5–10 minutes depending on the number of ads.") }}<br>
+        {{ t("This usually takes 1–2 minutes.") if single_ad else t("This takes 5–10 minutes depending on the number of ads.") }}<br>
         {{ t("You can safely close this tab — the analysis continues in the background.") }}
       </p>
       <button type="button" id="go-to-report-btn" class="btn btn-green" style="display:none;margin-top:16px">
@@ -51,6 +51,7 @@
 <script>
 const REPORT_ID    = "{{ report.id }}";
 const IS_LIMITED   = {{ 'true' if report.is_limited else 'false' }};
+const IS_SINGLE_AD = {{ 'true' if single_ad else 'false' }};
 const IS_LOGGED_IN = {{ 'true' if user else 'false' }};
 const POLL_MS      = 3000;
 
@@ -238,7 +239,11 @@ async function poll() {
     let msg = {{ t("Collecting ad links…")|tojson }};
     let pct = 5;
 
-    if (status === "running") {
+    if (status === "running" && IS_SINGLE_AD) {
+      // one listing: ads_found is 1 from the start, ads_analyzed flips to 1 only when it is done
+      msg = {{ t("Reading and analyzing the ad…")|tojson }};
+      pct = 40;
+    } else if (status === "running") {
       if (found === 0) {
         msg = {{ t("Collecting ad links from all pages…")|tojson }};
         pct = 10;
@@ -263,7 +268,7 @@ async function poll() {
     document.getElementById("status-msg").textContent = msg;
     const detail = document.getElementById("progress-detail");
     if (detail) {
-      if (found > 0) {
+      if (found > 0 && !IS_SINGLE_AD) {
         const total = IS_LIMITED ? Math.min(found, {{ settings.FREE_ADS_LIMIT }}) : found;
         detail.textContent = {{ t("Ads found: {found} · Processed: {analyzed} / {total}")|tojson }}.replace("{found}", found).replace("{analyzed}", analyzed).replace("{total}", total);
       } else {

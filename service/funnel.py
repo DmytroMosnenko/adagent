@@ -337,11 +337,18 @@ async def record_server_event(
         _warn_throttled("record_server_event failed", exc)
 
 
-async def record_report_outcome(factory, report_id: str, event: str) -> None:
+async def record_report_outcome(factory, report_id: str, event: str, *,
+                                reason: Optional[str] = None,
+                                duration_ms: Optional[int] = None) -> None:
     """
     analyze_done / analyze_failed, written from tasks.py. The session attribution is
     copied from this report's analyze_started row (matched by report id), so the
     reports table needs no extra column. No started row -> nothing is written.
+
+    detail is the report id, optionally followed by ":<reason>:<duration_ms>" —
+    reason is a short code such as "gone" ("ok" on success when only a duration is
+    given), duration_ms the wall-clock time of the job. The report id always stays
+    the first 32 characters (crud.delete_funnel_events relies on that).
     """
     try:
         if not _enabled():
@@ -351,12 +358,15 @@ async def record_report_outcome(factory, report_id: str, event: str) -> None:
             started = await crud.get_funnel_event_by_detail(db, "analyze_started", report_id)
             if started is None:
                 return
+            detail = report_id
+            if reason or duration_ms is not None:
+                detail = f"{report_id}:{reason or 'ok'}:{int(duration_ms or 0)}"[:64]
             await crud.add_funnel_event(
                 db, event=event, sid=started.sid, has_gclid=started.has_gclid,
                 has_fbclid=started.has_fbclid,
                 device=started.device, ui_lang=started.ui_lang, utm_source=started.utm_source,
                 utm_campaign=started.utm_campaign, url_host=started.url_host,
-                url_label=started.url_label, detail=report_id,
+                url_label=started.url_label, detail=detail,
             )
     except Exception as exc:
         _warn_throttled("record_report_outcome failed", exc)

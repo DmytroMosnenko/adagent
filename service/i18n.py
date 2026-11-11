@@ -101,9 +101,9 @@ PL: dict[str, str] = {
         "Wklej link do wyszukiwania z OLX, Otomoto lub Otodom. AdAgent przeczyta każde ogłoszenie, oceni je w skali 1–10, wskaże czerwone flagi i przygotuje ranking ofert.",
     "OLX / Otomoto / Otodom filter URL": "Link do wyszukiwania z OLX / Otomoto / Otodom",
     "Go to OLX, apply your filters, copy the URL from the browser bar.": "Wejdź na OLX, Otomoto lub Otodom, ustaw filtry i skopiuj adres z paska przeglądarki.",
-    "Your search link (OLX, Otomoto or Otodom)": "Twój link do wyszukiwania (OLX, Otomoto lub Otodom)",
-    "Open OLX, Otomoto or Otodom, set your filters (brand, price, year…), then copy the address from the browser bar and paste it here.":
-        "Wejdź na OLX, Otomoto lub Otodom, ustaw filtry (marka, cena, rok…), skopiuj adres z paska przeglądarki i wklej go tutaj.",
+    "Your search link or a single ad link (OLX, Otomoto or Otodom)": "Twój link do wyszukiwania lub do pojedynczego ogłoszenia (OLX, Otomoto lub Otodom)",
+    "Open OLX, Otomoto or Otodom and set your filters (brand, price, year…) — or open a single ad — then copy the address from the browser bar and paste it here.":
+        "Wejdź na OLX, Otomoto lub Otodom i ustaw filtry (marka, cena, rok…) — albo otwórz pojedyncze ogłoszenie — a potem skopiuj adres z paska przeglądarki i wklej go tutaj.",
     "Example AdAgent report: a ranked leaderboard of car offers with scores and verdicts":
         "Przykładowy raport AdAgent: ranking ofert samochodów z ocenami i werdyktami",
     "Example": "Przykład",
@@ -376,7 +376,7 @@ PL: dict[str, str] = {
     "Vehicles": "Pojazdy", "Realestate": "Nieruchomości", "Phones": "Telefony", "Custom": "Własny",
     "done": "gotowy", "failed": "błąd", "pending": "oczekuje", "running": "w toku",
 
-    "Please paste your search link.": "Wklej link do wyszukiwania.",
+    "Please paste a search link or a single ad link.": "Wklej link do wyszukiwania lub do pojedynczego ogłoszenia.",
     "Please enter a valid link starting with https://": "Podaj poprawny link zaczynający się od https://",
 
     # ── messages produced by server / tasks ──
@@ -420,7 +420,10 @@ PL: dict[str, str] = {
     "Show details": "Pokaż szczegóły",
     "No link yet? See an example report →": "Nie masz jeszcze linku? Zobacz przykładowy raport →",
     "Preset chosen automatically from your link": "Preset wybrany automatycznie na podstawie linku",
-    "In the OLX app: Share → Copy link": "W aplikacji OLX: Udostępnij → Kopiuj link",
+    "We can't tell the type of this OLX ad from its link — please choose what kind of ad it is.": "Z linku nie da się rozpoznać rodzaju tego ogłoszenia OLX — wybierz, czego dotyczy.",
+    "Please choose an analysis preset.": "Wybierz rodzaj analizy.",
+    "In the OLX app: open a search or an ad, then Share → Copy link": "W aplikacji OLX: otwórz wyszukiwanie lub ogłoszenie, potem Udostępnij → Kopiuj link",
+    "Paste a search link or a single ad link": "Wklej link do wyszukiwania lub do pojedynczego ogłoszenia",
 
     # ── one-time pass (no subscription) ──
     "{h} h pass": "Dostęp {h} h",
@@ -479,4 +482,26 @@ PL: dict[str, str] = {
         "Pełny dostęp jest aktywny do {until}. Nie odnawia się i nie zostaniesz obciążony/a ponownie.",
     "Thank you for your purchase!": "Dziękujemy za zakup!",
     "Click the link below to sign in:": "Kliknij poniższy link, aby się zalogować:",
+
+    # ── single-ad mode (one pasted listing) ──
+    "Analyzing your ad…": "Analizuję Twoje ogłoszenie…",
+    "This usually takes 1–2 minutes.": "To zwykle trwa 1–2 minuty.",
+    "Reading and analyzing the ad…": "Czytam i analizuję ogłoszenie…",
+    "View ad ↗": "Zobacz ogłoszenie ↗",
+    "What to ask the seller": "O co zapytać sprzedawcę",
+    "Try again →": "Spróbuj ponownie →",
+    "This ad is no longer available (it was removed or has expired), or the link does not open an ad. Check the link in your browser or try another ad.":
+        "To ogłoszenie nie jest już dostępne (zostało usunięte lub wygasło) albo link nie otwiera ogłoszenia. Sprawdź link w przeglądarce lub wklej inne ogłoszenie.",
+    "The site blocked our access to this ad. This is usually temporary — please try again in a few minutes.":
+        "Serwis zablokował nam dostęp do tego ogłoszenia. Zwykle to chwilowe — spróbuj ponownie za kilka minut.",
+    "The ad page took too long to load. Please try again in a moment.":
+        "Strona ogłoszenia ładowała się zbyt długo. Spróbuj ponownie za chwilę.",
+    "We could not read this ad page — its layout may not be supported yet. Try another ad or a search link.":
+        "Nie udało się odczytać strony tego ogłoszenia — jej układ może nie być jeszcze obsługiwany. Spróbuj innego ogłoszenia lub linku do wyszukiwania.",
+    "This link does not lead to an ad on olx.pl, otomoto.pl or otodom.pl.":
+        "Ten link nie prowadzi do ogłoszenia w serwisie olx.pl, otomoto.pl ani otodom.pl.",
+    "The AI analysis of this ad failed. Please try again in a moment.":
+        "Analiza AI tego ogłoszenia nie powiodła się. Spróbuj ponownie za chwilę.",
+    "Something went wrong while analyzing this ad. Please try again.":
+        "Podczas analizy tego ogłoszenia coś poszło nie tak. Spróbuj ponownie.",
 }

@@ -322,6 +322,15 @@ table.history td.h-url a { color: var(--muted); font-size: 0.82rem; }
 .step-head h3 { margin: 0; line-height: 1.25; }
 .step .mock + p { margin-top: 12px; }
 .preset-auto { color: var(--green); font-weight: 600; margin: -8px 0 12px; }
+/* an OLX ad link carries no category: the preset choice becomes the visible next step */
+.preset-pick { color: var(--amber); font-weight: 700; font-size: 0.88rem; margin: 0 0 8px; }
+.preset-grid.needs-choice { padding: 10px; margin-left: -10px; margin-right: -10px; border-radius: 14px;
+  background: #fffbeb; outline: 2px solid var(--amber); animation: preset-glow 1.6s ease-out 1; }
+.preset-grid.needs-choice .preset-card { background: #fff; }
+.preset-grid.shake { animation: preset-shake .35s ease-in-out 1; }
+@keyframes preset-glow { 0% { box-shadow: 0 0 0 0 rgba(217,119,6,.55); } 100% { box-shadow: 0 0 0 14px rgba(217,119,6,0); } }
+@keyframes preset-shake { 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+@media (prefers-reduced-motion: reduce) { .preset-grid.needs-choice, .preset-grid.shake { animation: none; } }
 
 /* landing: tighter gap between the hero strip and the form */
 .hero-landing { padding-bottom: 6px; }

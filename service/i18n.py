@@ -420,8 +420,7 @@ PL: dict[str, str] = {
     "Show details": "Pokaż szczegóły",
     "No link yet? See an example report →": "Nie masz jeszcze linku? Zobacz przykładowy raport →",
     "Preset chosen automatically from your link": "Preset wybrany automatycznie na podstawie linku",
-    "We can't tell the type of this OLX ad from its link — please choose what kind of ad it is.": "Z linku nie da się rozpoznać rodzaju tego ogłoszenia OLX — wybierz, czego dotyczy.",
-    "Please choose an analysis preset.": "Wybierz rodzaj analizy.",
+    "Choose what it's about.": "Wybierz, czego dotyczy.",
     "In the OLX app: open a search or an ad, then Share → Copy link": "W aplikacji OLX: otwórz wyszukiwanie lub ogłoszenie, potem Udostępnij → Kopiuj link",
     "Paste a search link or a single ad link": "Wklej link do wyszukiwania lub do pojedynczego ogłoszenia",
 

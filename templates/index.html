@@ -124,7 +124,9 @@
   <div class="card">
 <style>
 /* preset section: the next step when the type of ad cannot be read from the link */
-.preset-pick { color: var(--amber); font-weight: 700; font-size: 0.88rem; margin: 0 0 8px; }
+.preset-pick, .preset-auto { font-weight: 700; font-size: 0.88rem; margin: 0 0 8px; }
+.preset-pick { color: var(--amber); }
+.preset-auto { color: var(--green); background: var(--green-bg); border-radius: 8px; padding: 6px 10px; }
 .preset-grid.needs-choice { padding: 10px; margin-left: -10px; margin-right: -10px; border-radius: 14px;
   background: #fffbeb; outline: 2px solid var(--amber); animation: preset-glow 1.6s ease-out 1; }
 .preset-grid.needs-choice .preset-card { background: #fff; }
@@ -150,11 +152,10 @@
       </div>
 
       <!-- Preset selector -->
-      <div class="form-group">
+      <div class="form-group" id="preset-section">
         <label class="form-label" id="preset-label">{{ t("Analysis preset") }}</label>
-        <p class="preset-pick" id="preset-pick" role="alert" hidden
-           data-msg-olx="{{ t('We can\'t tell the type of this OLX ad from its link — please choose what kind of ad it is.') }}"
-           data-msg-none="{{ t('Please choose an analysis preset.') }}"></p>
+        <p class="preset-auto" id="preset-auto" hidden>✓ {{ t("Preset chosen automatically from your link") }}</p>
+        <p class="preset-pick" id="preset-pick" role="alert" hidden>👇 {{ t("Choose what it's about.") }}</p>
         <div class="preset-grid" id="preset-grid" role="radiogroup" aria-labelledby="preset-label">
           {% for key, meta in presets.items() %}
           <label class="preset-card">
@@ -170,8 +171,6 @@
             <span class="preset-card-desc">{{ t("Write your own analysis instructions") }}</span>
           </label>
         </div>
-
-        <p class="form-hint preset-auto" id="preset-auto" hidden>✓ {{ t("Preset chosen automatically from your link") }}</p>
 
         <!-- Custom prompt fields (shown via JS) -->
         <div id="custom-fields" style="display:none" class="preset-custom">
@@ -375,17 +374,47 @@
       var host = u.hostname.toLowerCase();
       return (host === 'olx.pl' || host.endsWith('.olx.pl')) && /^\/d\/oferta\/[^/]/i.test(u.pathname);
     }
-    function reveal() {          // bring the preset section (and its note) into view, only if needed
-      if (!grid || !window.matchMedia) return;
-      var end = (note && !note.hidden ? note : grid).getBoundingClientRect().bottom;
-      var top = grid.getBoundingClientRect().top;
-      if (top >= 0 && end <= window.innerHeight) return;
-      var calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      grid.scrollIntoView({behavior: calm ? 'auto' : 'smooth', block: 'center'});
+    var section = document.getElementById('preset-section'), pasted = false, revealTimer = null, revealUntil = 0;
+    // A paste is not always announced by a "paste" event (phone keyboards insert clipboard text as
+    // an input event), so a big jump in the field's length counts as a paste too.
+    var lastLen = urlInput.value.length;
+    urlInput.addEventListener('paste', function () { pasted = true; });
+    urlInput.addEventListener('beforeinput', function (e) {
+      if (/^insertFrom(Paste|Drop)|^insertReplacementText$/.test(e.inputType || '')) pasted = true;
+    });
+    urlInput.addEventListener('input', function () {
+      if (urlInput.value.length - lastLen >= 12) pasted = true;
+      lastLen = urlInput.value.length;
+    }, true);                                   // capture: runs before autoSelect below
+    function scrollToSection() {   // label + hint + cards in view; tall section (phones): label at the top
+      if (!section) return;
+      // Visible height: the smaller of the layout viewport and the visual viewport (keyboard open).
+      // Firefox's responsive mode can report a visual viewport taller than the emulated screen.
+      var vh = Math.min(window.innerHeight || 1e9, document.documentElement.clientHeight || 1e9,
+                        (window.visualViewport && window.visualViewport.height) || 1e9);
+      var r = section.getBoundingClientRect(), tall = r.height > vh - 24;
+      if (tall ? (r.top >= 0 && r.top < vh * 0.3) : (r.top >= 0 && r.bottom <= vh)) return;
+      var y = window.pageYOffset + r.top - (tall ? 12 : (vh - r.height) / 2);
+      var calm = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+      window.scrollTo({top: Math.max(0, y), behavior: calm ? 'auto' : 'smooth'});
     }
-    function ask(message) {      // highlight the section with a hint saying why
+    function reveal() {
+      // Phones: after a paste the keyboard is still up and the browser keeps the focused field in view,
+      // cancelling an immediate scroll. Close the keyboard (paste only, never while typing), then scroll;
+      // scroll again whenever the visible area changes (keyboard closing) for the next 2 seconds.
+      clearTimeout(revealTimer);
+      var wasPasted = pasted; pasted = false;
+      if (wasPasted && document.activeElement === urlInput) urlInput.blur();
+      revealUntil = Date.now() + 2000;
+      revealTimer = setTimeout(function () { scrollToSection(); setTimeout(scrollToSection, 500); }, wasPasted ? 350 : 60);
+    }
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', function () {
+      if (Date.now() < revealUntil) { clearTimeout(revealTimer); revealTimer = setTimeout(scrollToSection, 120); }
+    });
+    function ask() {             // highlight the section; the hint says what to do
       if (!grid) return;
-      if (pick) { pick.textContent = '\ud83d\udc47 ' + message; pick.hidden = false; }
+      if (note) note.hidden = true;
+      if (pick) pick.hidden = false;
       grid.classList.add('needs-choice');
     }
     function settle() {          // a preset is chosen: remove every highlight ("all good")
@@ -402,12 +431,19 @@
     if (formEl0) formEl0.addEventListener('submit', function (e) {
       if (chosen()) return;
       e.preventDefault(); e.stopImmediatePropagation();
-      ask(pick ? (isOlxAd(urlInput.value) ? pick.dataset.msgOlx : pick.dataset.msgNone) : '');
+      ask();
       grid.classList.remove('shake'); void grid.offsetWidth; grid.classList.add('shake');   // restart the nudge
       reveal();
     }, true);
 
     function autoSelect() {
+      if (!urlInput.value.trim()) {          // empty field: back to "nothing chosen"
+        chosenByHand = false;
+        ALL.forEach(function (r) { r.checked = false; });
+        toggle(); settle();
+        if (note) note.hidden = true;
+        return;
+      }
       if (chosenByHand) return;
       var kind = kindOf(urlInput.value);
       if (!kind) {
@@ -415,7 +451,7 @@
           ALL.forEach(function (r) { r.checked = false; });
           toggle();
           if (note) note.hidden = true;
-          ask(pick.dataset.msgOlx);
+          ask();
           reveal();
         } else if (!chosen()) { settle(); }
         return;

@@ -44,6 +44,8 @@ from service.logger import get_logger, setup_root_logging
 setup_root_logging()
 logger = get_logger(__name__)
 
+_LISTEN_BACKLOG = 4096
+
 GATES: dict[str, FairGate] = {
     "scraper": FairGate(settings.SCRAPER_MAX_CONCURRENT_TOTAL, name="scraper"),
     "openai":  FairGate(settings.OPENAI_MAX_CONCURRENT_TOTAL, name="openai"),
@@ -179,7 +181,13 @@ async def main() -> None:
     if os.path.exists(socket_path):
         os.unlink(socket_path)  # stale socket from a previous crashed run
 
-    server = await asyncio.start_unix_server(handle_connection, path=socket_path)
+    # asyncio's default backlog is 100. A single 230-ad report opens 230 connections
+    # in the same few milliseconds (one per ad, see broker_client.py), so with the
+    # default the surplus connections were reset ("Connection lost") before being
+    # accepted. Size it well above the largest realistic burst (all reports together).
+    server = await asyncio.start_unix_server(
+        handle_connection, path=socket_path, backlog=_LISTEN_BACKLOG,
+    )
     os.chmod(socket_path, 0o660)
 
     logger.info(

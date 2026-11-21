@@ -224,21 +224,36 @@ async def run_analysis(report_id: str) -> None:
             nonlocal completed
 
             # -- Extract --
-            data = await scraper.scrape_ad(report_id, url, **({"single": True} if single else {}))
+            try:
+                data = await scraper.scrape_ad(report_id, url, **({"single": True} if single else {}))
+            except Exception as exc:
+                if single:
+                    raise
+                # One ad's infrastructure failure (browser context died, broker hiccup…)
+                # must not fail a whole 230-ad report — record it like any other
+                # unscrapable ad and carry on.
+                logger.warning("[task] %s scrape crashed for %s: %s", report_id, url, exc)
+                data = {"url": url, "error": str(exc), "error_code": "error"}
             if single and data.get("error"):
                 raise SingleAdError(data.get("error_code") or "error")
             if single and not (data.get("title") or data.get("page_text")):
                 raise SingleAdError("unparseable")
 
             # -- Analyze --
-            try:
-                if is_templated:
-                    analysis = await ai_client.analyze_ad_templated(data, ad_prompt, report_id, lang_reminder)
-                else:
-                    analysis = await ai_client.analyze_ad(data, ad_prompt, report_id, lang_reminder)
-            except Exception as exc:
-                analysis = f"AI ERROR: {exc}"
-                logger.warning("[task] ad analysis failed: %s", exc)
+            if data.get("error") and not (data.get("title") or data.get("page_text")):
+                # Nothing was scraped (blocked / timeout / crash): don't pay the model to
+                # "analyze" an error message. "AI ERROR" is the sentinel the summary
+                # step already skips and the report builder already renders.
+                analysis = f"AI ERROR: ad could not be scraped ({data.get('error_code') or 'error'})"
+            else:
+                try:
+                    if is_templated:
+                        analysis = await ai_client.analyze_ad_templated(data, ad_prompt, report_id, lang_reminder)
+                    else:
+                        analysis = await ai_client.analyze_ad(data, ad_prompt, report_id, lang_reminder)
+                except Exception as exc:
+                    analysis = f"AI ERROR: {exc}"
+                    logger.warning("[task] ad analysis failed: %s", exc)
             # A lone ad has nothing to hide an unusable analysis behind: fail instead of
             # rendering "AI ERROR…" or unparsed text as the report.
             if single and (analysis.startswith("AI ERROR")
@@ -255,7 +270,17 @@ async def run_analysis(report_id: str) -> None:
 
             return {"url": url, "data": data, "analysis": analysis}
 
-        results: list[dict] = await asyncio.gather(*[_process_one_ad(u) for u in links])
+        # asyncio.gather() does NOT cancel its siblings when one task raises: the other
+        # ~230 ads would keep scraping and calling OpenAI for a report that is already
+        # failed, hogging the shared scraper/OpenAI slots. Cancel them explicitly.
+        ad_tasks = [asyncio.create_task(_process_one_ad(u)) for u in links]
+        try:
+            results: list[dict] = await asyncio.gather(*ad_tasks)
+        except BaseException:
+            for t in ad_tasks:
+                t.cancel()
+            await asyncio.gather(*ad_tasks, return_exceptions=True)
+            raise
 
         # ── 5. AI summary ──────────────────────────────────────────────────────
         summary_text = ""

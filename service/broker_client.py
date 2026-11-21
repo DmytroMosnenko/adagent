@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import random
 from typing import Awaitable, Callable, TypeVar
 
 from .logger import get_logger
@@ -23,31 +24,64 @@ logger = get_logger(__name__)
 T = TypeVar("T")
 
 
+# Connect/handshake failures happen *before* a slot is granted, so retrying them is
+# always safe: the broker frees nothing it never handed out, and coro_fn() has not
+# started. (Once granted, coro_fn() is never retried here.)
+_HANDSHAKE_ATTEMPTS = 6
+_HANDSHAKE_BACKOFF = 0.1     # seconds, doubled per attempt (capped at 2s) + jitter
+
+
 class BrokerGateClient:
     def __init__(self, resource: str, socket_path: str):
         self.resource = resource
         self.socket_path = socket_path
 
+    async def _acquire(self, owner_id: str):
+        """
+        Connect and wait for the grant. Returns (reader, writer) holding a slot.
+
+        A connection that is dropped, reset or refused before the grant (e.g. a
+        burst bigger than the broker's accept queue) is retried with backoff
+        instead of failing the caller's whole report.
+        """
+        last_exc: Exception | None = None
+        for attempt in range(_HANDSHAKE_ATTEMPTS):
+            writer = None
+            try:
+                reader, writer = await asyncio.open_unix_connection(self.socket_path)
+                writer.write((json.dumps({"resource": self.resource, "owner": str(owner_id)}) + "\n").encode())
+                await writer.drain()
+
+                line = await reader.readline()      # blocks until a slot is free (can be minutes)
+                if not line:
+                    raise ConnectionError("connection closed before grant")
+                resp = json.loads(line)
+                if resp.get("status") != "granted":
+                    raise RuntimeError(f"[broker:{self.resource}] denied: {resp}")
+                return reader, writer
+            except OSError as exc:                  # ConnectionError & friends are OSErrors
+                last_exc = exc
+                if writer is not None:
+                    writer.close()
+                if attempt + 1 < _HANDSHAKE_ATTEMPTS:
+                    delay = min(_HANDSHAKE_BACKOFF * 2 ** attempt, 2.0) + random.uniform(0, 0.1)
+                    logger.warning("[broker:%s] handshake failed (%s) — retry %d/%d in %.2fs",
+                                   self.resource, exc, attempt + 1, _HANDSHAKE_ATTEMPTS - 1, delay)
+                    await asyncio.sleep(delay)
+            except BaseException:
+                # cancelled / protocol error: don't leak the socket (the broker
+                # treats the EOF as "client gave up" and frees the slot / queue entry)
+                if writer is not None:
+                    writer.close()
+                raise
+        raise ConnectionError(
+            f"[broker:{self.resource}] can't get a slot from concurrency_broker.py at "
+            f"{self.socket_path} after {_HANDSHAKE_ATTEMPTS} attempts — is it running? ({last_exc})"
+        ) from last_exc
+
     async def run(self, owner_id: str, coro_fn: Callable[[], Awaitable[T]]) -> T:
+        reader, writer = await self._acquire(owner_id)
         try:
-            reader, writer = await asyncio.open_unix_connection(self.socket_path)
-        except OSError as exc:
-            raise ConnectionError(
-                f"[broker:{self.resource}] can't reach concurrency_broker.py at "
-                f"{self.socket_path} — is it running? ({exc})"
-            ) from exc
-
-        try:
-            writer.write((json.dumps({"resource": self.resource, "owner": str(owner_id)}) + "\n").encode())
-            await writer.drain()
-
-            line = await reader.readline()
-            if not line:
-                raise ConnectionError(f"[broker:{self.resource}] connection closed before grant")
-            resp = json.loads(line)
-            if resp.get("status") != "granted":
-                raise RuntimeError(f"[broker:{self.resource}] denied: {resp}")
-
             try:
                 return await coro_fn()
             finally:

@@ -1839,7 +1839,13 @@ async def scrape_ad(report_id: str, url: str, single: bool = False) -> dict:
     from playwright.async_api import TimeoutError as PWTimeout
 
     async def _do() -> dict:
-        ctx = await context_pool.acquire()
+        # Bind the pool once: shutdown_browser_pool() sets the module global to None,
+        # and an in-flight scrape must still be able to hand its context back
+        # (it used to die with "'NoneType' object has no attribute 'release'").
+        pool = context_pool
+        if pool is None:
+            raise RuntimeError("browser pool is not running (app shutting down?)")
+        ctx = await pool.acquire()
         try:
             data = await _extract_one(url, ctx, PWTimeout, single=single)
             # Same pacing the old sequential loop applied between ads, now
@@ -1850,6 +1856,6 @@ async def scrape_ad(report_id: str, url: str, single: bool = False) -> dict:
             await asyncio.sleep(_AD_BETWEEN_DELAY + jitter)
             return data
         finally:
-            await context_pool.release(ctx)
+            await pool.release(ctx)
 
     return await scrape_gate.run(report_id, _do)

@@ -408,3 +408,100 @@ async def test_failed_filter_report_still_counts_against_the_free_tier(db, patch
     report = await crud.get_report(db, report_id)
     assert report.status == "failed" and report.is_limited is True
     assert await crud.count_free_reports_since(db, datetime.utcnow() - timedelta(days=1)) == 1
+
+
+# ── Large filters (230+ ads) ───────────────────────────────────────────────────
+
+import asyncio
+from contextlib import ExitStack
+
+
+def _scraped(url):
+    return {"url": url, "title": "Car", "price": "30 000 zł", "page_text": "text"}
+
+
+def _big_filter(links, scrape, analyze, tmp_path):
+    """Patch everything run_analysis touches; prompt files / the HTML template are
+    stubbed so these tests don't depend on the (private) prompts/ and templates/ dirs."""
+    stack = ExitStack()
+    for target, new in (
+        ("service.tasks.scraper.collect_all_links", AsyncMock(return_value=(links, "ok"))),
+        ("service.tasks.scraper.scrape_ad", scrape),
+        ("service.tasks.ai_client.analyze_ad", analyze),
+        ("service.tasks.ai_client.analyze_summary", AsyncMock(return_value=_fake_summary())),
+        ("service.tasks._load_prompt", lambda path: "prompt"),
+        ("service.tasks.report_builder.build_html_report", lambda **kw: "<html></html>"),
+        ("service.tasks.settings.REPORT_STORAGE_PATH", str(tmp_path)),
+    ):
+        stack.enter_context(patch(target, new=new))
+    return stack
+
+
+async def test_one_crashing_scrape_does_not_fail_a_big_report(db, patch_task_db, tmp_path):
+    """A scrape_ad() that raises (browser died, broker hiccup) is just one bad ad."""
+    links = _fake_links(230)
+
+    async def scrape(report_id, url, **kw):
+        if url == links[117]:
+            raise ConnectionError("Connection lost")
+        return _scraped(url)
+
+    analyze = AsyncMock(return_value=_fake_analysis())
+    report_id = await _create_report(db, is_limited=False)
+    with _big_filter(links, scrape, analyze, tmp_path):
+        await run_analysis(report_id)
+
+    report = await crud.get_report(db, report_id)
+    assert report.status == "done"
+    assert report.ads_analyzed == 230
+    assert analyze.await_count == 229          # the unscraped ad never reached the model
+
+
+async def test_unscraped_ads_are_not_sent_to_the_model(db, patch_task_db, tmp_path):
+    links = _fake_links(6)
+
+    async def scrape(report_id, url, **kw):
+        if url in links[:2]:
+            return {"url": url, "error": "HTTP 403 — rate limited", "error_code": "blocked"}
+        return _scraped(url)
+
+    analyze = AsyncMock(return_value=_fake_analysis())
+    report_id = await _create_report(db, is_limited=False)
+    with _big_filter(links, scrape, analyze, tmp_path):
+        await run_analysis(report_id)
+
+    assert analyze.await_count == 4
+    assert (await crud.get_report(db, report_id)).status == "done"
+
+
+async def test_failed_report_cancels_its_remaining_ads(db, patch_task_db, tmp_path):
+    """gather() leaves siblings running when one task raises; they must be cancelled,
+    not left scraping / calling OpenAI for a report that is already failed."""
+    links = _fake_links(30)
+    started, cancelled = [], []
+
+    async def scrape(report_id, url, **kw):
+        if url == links[0]:
+            return _scraped(url)                # finishes -> triggers the progress write
+        started.append(url)
+        try:
+            await asyncio.sleep(30)             # stands in for a slow page
+        except asyncio.CancelledError:
+            cancelled.append(url)
+            raise
+        return _scraped(url)
+
+    report_id = await _create_report(db, is_limited=False)
+    real_update = crud.update_report
+
+    async def flaky_update(db_, rid, **kw):
+        if "ads_analyzed" in kw:                # the per-ad progress write
+            raise RuntimeError("db gone")
+        return await real_update(db_, rid, **kw)
+
+    with _big_filter(links, scrape, AsyncMock(return_value=_fake_analysis()), tmp_path), \
+         patch("service.tasks.crud.update_report", new=flaky_update):
+        await run_analysis(report_id)
+
+    assert (await crud.get_report(db, report_id)).status == "failed"
+    assert started and set(cancelled) == set(started)   # every in-flight sibling was cancelled

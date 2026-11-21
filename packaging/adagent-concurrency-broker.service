@@ -16,6 +16,9 @@ Environment=PYTHONFAULTHANDLER=1
 RuntimeDirectory=adagent
 RuntimeDirectoryMode=0750
 ExecStart=/opt/adagent/venv/bin/python /opt/adagent/concurrency_broker.py
+# Every queued ad / OpenAI call / browser page holds file descriptors; the 1024 default
+# is exhausted by one large report ("[Errno 24] Too many open files").
+LimitNOFILE=65536
 Restart=always
 RestartSec=5
 StandardOutput=append:/var/log/adagent/concurrency-broker.log

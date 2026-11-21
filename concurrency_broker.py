@@ -39,10 +39,15 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from service.config import settings
 from service.fair_queue import FairGate
+from service.fdlimit import raise_nofile_limit
 from service.logger import get_logger, setup_root_logging
 
 setup_root_logging()
 logger = get_logger(__name__)
+
+# One fd per queued/granted client connection — the default 256 (macOS) / 1024 (systemd)
+# is far below what a few 230-ad reports need.
+raise_nofile_limit()
 
 _LISTEN_BACKLOG = 4096
 

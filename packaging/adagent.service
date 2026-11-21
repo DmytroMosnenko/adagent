@@ -18,6 +18,9 @@ ExecStart=/opt/adagent/venv/bin/uvicorn adagent_server:app \
     --port 8001 \
     --workers 2 \
     --log-level info
+# Every queued ad / OpenAI call / browser page holds file descriptors; the 1024 default
+# is exhausted by one large report ("[Errno 24] Too many open files").
+LimitNOFILE=65536
 Restart=always
 RestartSec=5
 StandardOutput=append:/var/log/adagent/adagent.log

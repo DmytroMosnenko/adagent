@@ -219,8 +219,15 @@ async def run_analysis(report_id: str) -> None:
 
         progress_lock = asyncio.Lock()
         completed = 0
+        # Bound the ads in flight per report: every ad waiting on a broker gate holds an open
+        # Unix socket, so launching all 230 at once exhausts the process's file descriptors.
+        ad_window = asyncio.Semaphore(max(1, settings.REPORT_MAX_ADS_IN_FLIGHT))
 
         async def _process_one_ad(url: str) -> dict:
+            async with ad_window:
+                return await _process_one_ad_inner(url)
+
+        async def _process_one_ad_inner(url: str) -> dict:
             nonlocal completed
 
             # -- Extract --

@@ -13,8 +13,10 @@ crash-safety reasoning.
 from __future__ import annotations
 
 import asyncio
+import errno
 import json
 import random
+import time
 from typing import Awaitable, Callable, TypeVar
 
 from .logger import get_logger
@@ -29,6 +31,10 @@ T = TypeVar("T")
 # started. (Once granted, coro_fn() is never retried here.)
 _HANDSHAKE_ATTEMPTS = 6
 _HANDSHAKE_BACKOFF = 0.1     # seconds, doubled per attempt (capped at 2s) + jitter
+# Out of file descriptors (EMFILE/ENFILE) is transient: other in-flight work frees fds as it
+# finishes. Don't burn the 6 quick attempts (~3s) on it — keep waiting up to this long.
+_FD_EXHAUSTED_PATIENCE = 60.0
+_FD_ERRNOS = (errno.EMFILE, errno.ENFILE)
 
 
 class BrokerGateClient:
@@ -45,7 +51,12 @@ class BrokerGateClient:
         instead of failing the caller's whole report.
         """
         last_exc: Exception | None = None
-        for attempt in range(_HANDSHAKE_ATTEMPTS):
+        fd_deadline = time.monotonic() + _FD_EXHAUSTED_PATIENCE
+        attempt = -1
+        while True:
+            attempt += 1
+            if attempt >= _HANDSHAKE_ATTEMPTS:
+                break
             writer = None
             try:
                 reader, writer = await asyncio.open_unix_connection(self.socket_path)
@@ -63,7 +74,13 @@ class BrokerGateClient:
                 last_exc = exc
                 if writer is not None:
                     writer.close()
-                if attempt + 1 < _HANDSHAKE_ATTEMPTS:
+                if exc.errno in _FD_ERRNOS and time.monotonic() < fd_deadline:
+                    attempt -= 1                              # does not consume a normal attempt
+                    delay = random.uniform(0.5, 2.0)
+                    logger.warning("[broker:%s] out of file descriptors (%s) — retry in %.2fs",
+                                   self.resource, exc, delay)
+                    await asyncio.sleep(delay)
+                elif attempt + 1 < _HANDSHAKE_ATTEMPTS:
                     delay = min(_HANDSHAKE_BACKOFF * 2 ** attempt, 2.0) + random.uniform(0, 0.1)
                     logger.warning("[broker:%s] handshake failed (%s) — retry %d/%d in %.2fs",
                                    self.resource, exc, attempt + 1, _HANDSHAKE_ATTEMPTS - 1, delay)

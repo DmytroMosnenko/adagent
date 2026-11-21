@@ -27,9 +27,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from service.config import settings
 from service.db import async_session, get_db
 from service.logger import get_logger, setup_root_logging
+from service.fdlimit import raise_nofile_limit
 
 # Apply unified log formatting before any third-party loggers are configured
 setup_root_logging()
+# macOS default is 256 open files: a big report (230 ads waiting on the broker + OpenAI
+# HTTPS sockets + Playwright pipes) exhausts it -> "[Errno 24] Too many open files".
+raise_nofile_limit()
 from service import crud, auth, email_client, stripe_client, scraper, i18n, funnel, url_guard, passes
 from service.tasks import run_analysis
 

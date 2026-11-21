@@ -154,6 +154,10 @@ class Settings(BaseSettings):
     # worker actually has traffic gets access to the full limit.
     SCRAPER_MAX_CONCURRENT_TOTAL: int = 20   # ScraperAPI concurrent-thread plan limit
     OPENAI_MAX_CONCURRENT_TOTAL: int = 100   # OpenAI concurrent request budget
+    # Max ads of ONE report being processed (scraped + analyzed) at the same time. Ads beyond
+    # this wait in memory, not on a broker socket, so a 230-ad report holds ~this many file
+    # descriptors instead of 230+. Keep it >= SCRAPER_MAX + OPENAI_MAX so both gates stay busy.
+    REPORT_MAX_ADS_IN_FLIGHT: int = 120
 
     # Unix domain socket the broker listens on and adagent_server workers
     # connect to. Same box only — this is not a network-reachable address.

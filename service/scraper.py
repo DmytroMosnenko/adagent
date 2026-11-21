@@ -42,6 +42,19 @@ _JS_WAIT_TIMEOUT   = 10_000 # ms to wait for JS-rendered content selector
 _LISTING_MAX_RETRIES = 2      # extra attempts after the first
 _LISTING_RETRY_BASE  = 12.0   # exponential back-off base (seconds)
 
+_TRANSIENT_NET_ERRORS = (
+    "ERR_TUNNEL_CONNECTION_FAILED", "ERR_PROXY_CONNECTION_FAILED", "ERR_CONNECTION_RESET",
+    "ERR_CONNECTION_CLOSED", "ERR_CONNECTION_REFUSED", "ERR_CONNECTION_TIMED_OUT",
+    "ERR_TIMED_OUT", "ERR_EMPTY_RESPONSE", "ERR_SOCKET_NOT_CONNECTED", "ERR_NETWORK_CHANGED",
+    "ERR_HTTP2_PROTOCOL_ERROR", "ERR_SSL_PROTOCOL_ERROR", "ERR_CONNECTION_ABORTED",
+)
+
+
+def _is_transient_net_error(exc: Exception) -> bool:
+    msg = str(exc)
+    return "net::ERR_" in msg and any(code in msg for code in _TRANSIENT_NET_ERRORS)
+
+
 # ── URL / site helpers ─────────────────────────────────────────────────────────
 
 _AD_PATTERNS = (
@@ -1812,6 +1825,25 @@ async def _extract_one(url: str, ctx, PWTimeout, single: bool = False) -> dict:
                         "error_code": "timeout"}
 
         except Exception as exc:
+            # Transient network/proxy failures (Chromium "net::ERR_…": the proxy's CONNECT
+            # tunnel failed, connection reset/closed, empty response, proxy unreachable…)
+            # are retried like a timeout/403 — a fresh attempt usually goes through another
+            # proxy exit IP. Anything else is a real bug and fails at once.
+            if _is_transient_net_error(exc):
+                logger.warning("[scraper] network error on %s (attempt %d/%d): %s",
+                               url, attempt + 1, _MAX_RETRIES + 1, str(exc).splitlines()[0][:200])
+                if page:
+                    try: await page.close()
+                    except Exception: pass
+                    page = None
+                if attempt < _MAX_RETRIES:
+                    delay = _RETRY_BASE * (attempt + 1) + random.uniform(1, 4)
+                    logger.info("[scraper] waiting %.1fs before retry", delay)
+                    await asyncio.sleep(delay)
+                    continue
+                return {"url": url,
+                        "error": f"Network/proxy error after {_MAX_RETRIES + 1} attempts: {str(exc).splitlines()[0][:200]}",
+                        "error_code": "network"}
             logger.error("[scraper] unexpected error on %s: %s", url, exc)
             return {"url": url, "error": str(exc), "error_code": "error"}
 
